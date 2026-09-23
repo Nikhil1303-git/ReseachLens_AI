@@ -106,6 +106,46 @@ def query():
         return jsonify({"error": str(error)}), 500
 
 
+@app.get("/api/documents")
+def list_documents():
+    """List all indexed documents in the active vector store."""
+    try:
+        pipeline, _ = get_pipeline()
+        docs = pipeline.list_documents()
+        return jsonify({"documents": docs, "count": len(docs)})
+    except Exception as error:
+        logger.exception("Failed to list indexed documents")
+        return jsonify({"error": str(error)}), 500
+
+
+@app.post("/api/compare")
+def compare():
+    """Compare 2 or more research papers across key dimensions (Step 7)."""
+    payload = request.get_json(silent=True) or {}
+    docs = payload.get("documents") or []
+    if not isinstance(docs, list) or len(docs) < 2:
+        return jsonify({"error": "Please select at least 2 documents to compare."}), 400
+
+    query = str(payload.get("query", "")).strip() or None
+    aspects = payload.get("aspects") or None
+    top_k = max(1, min(int(payload.get("top_k", 4)), 10))
+    temperature = float(payload.get("temperature", 0.2))
+
+    try:
+        pipeline, _ = get_pipeline()
+        result = pipeline.compare_documents(
+            documents=docs,
+            query=query,
+            aspects=aspects,
+            n_chunks_per_doc=top_k,
+            temperature=temperature,
+        )
+        return jsonify(result)
+    except Exception as error:
+        logger.exception("Document comparison failed")
+        return jsonify({"error": str(error)}), 500
+
+
 @app.post("/api/quiz/generate")
 def quiz_generate():
     payload = request.get_json(silent=True) or {}

@@ -23,6 +23,7 @@ class RAGPipeline:
         reranker=None,
         verifier=None,
         citation_engine=None,
+        comparator=None,
         config=None,
     ):
         """Initialize RAG pipeline.
@@ -36,6 +37,7 @@ class RAGPipeline:
             reranker: Optional CrossEncoderReranker instance
             verifier: Optional EvidenceVerifier instance
             citation_engine: Optional CitationEngine instance
+            comparator: Optional DocumentComparator instance
             config: Optional AppConfig instance
         """
         self.pdf_extractor = pdf_extractor
@@ -149,6 +151,24 @@ class RAGPipeline:
                 logger.warning(f"Could not auto-initialize CitationEngine: {e}")
                 self.citation_engine = None
 
+        # Initialize or wire DocumentComparator (Step 7)
+        if comparator is not None:
+            self.comparator = comparator
+        else:
+            try:
+                from app.comparison import DocumentComparator
+
+                self.comparator = DocumentComparator(
+                    pipeline=self,
+                    llm_client=self.llm_client,
+                    verifier=self.verifier,
+                    citation_engine=self.citation_engine,
+                    config=self.config,
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize DocumentComparator: {e}")
+                self.comparator = None
+
         if config and hasattr(config, "hybrid") and config.hybrid:
             self.retrieval_mode = config.hybrid.retrieval_mode
         else:
@@ -158,7 +178,8 @@ class RAGPipeline:
             f"Initialized RAGPipeline (retrieval_mode={self.retrieval_mode}, "
             f"reranker={'enabled' if (self.reranker and getattr(self.reranker, 'model', None)) else 'disabled'}, "
             f"verifier={'enabled' if self.verifier is not None else 'disabled'}, "
-            f"citations={'enabled' if self.citation_engine is not None else 'disabled'})"
+            f"citations={'enabled' if self.citation_engine is not None else 'disabled'}, "
+            f"comparator={'enabled' if self.comparator is not None else 'disabled'})"
         )
 
 
@@ -670,6 +691,82 @@ Answer:"""
 
         logger.info("RAG query completed successfully")
         return result
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """List all distinct documents indexed in the vector store with metadata.
+
+        Returns:
+            List of document metadata dictionaries
+        """
+        if self.comparator is not None:
+            return self.comparator.get_indexed_documents()
+
+        if hasattr(self.vector_store, "collection") and self.vector_store.collection is not None:
+            try:
+                data = self.vector_store.collection.get(include=["metadatas"])
+                metadatas = data.get("metadatas") or []
+                docs_seen: Dict[str, Dict[str, Any]] = {}
+                for m in metadatas:
+                    if not m or not isinstance(m, dict):
+                        continue
+                    doc_id = m.get("document_id") or ""
+                    source_file = m.get("source_file") or m.get("source") or "unknown"
+                    key = doc_id or source_file
+                    if key not in docs_seen:
+                        docs_seen[key] = {
+                            "document_id": doc_id,
+                            "source_file": source_file,
+                            "chunk_count": 0,
+                            "total_pages": 1,
+                        }
+                    docs_seen[key]["chunk_count"] += 1
+                return list(docs_seen.values())
+            except Exception as e:
+                logger.warning(f"Could not retrieve documents from vector store: {e}")
+                return []
+        return []
+
+    def compare_documents(
+        self,
+        documents: List[str],
+        query: Optional[str] = None,
+        aspects: Optional[List[str]] = None,
+        n_chunks_per_doc: int = 4,
+        temperature: float = 0.2,
+        max_tokens: int = 2500,
+    ) -> Dict[str, Any]:
+        """Perform multi-document comparative analysis across 2 or more research papers.
+
+        Args:
+            documents: List of document filenames or document IDs
+            query: Optional freeform comparison question
+            aspects: Optional list of comparison aspects
+            n_chunks_per_doc: Number of top chunks to retrieve per paper
+            temperature: Sampling temperature for generation
+            max_tokens: Maximum tokens in response
+
+        Returns:
+            Structured comparison results with matrix, markdown_table, synthesis, and citations
+        """
+        if self.comparator is None:
+            from app.comparison import DocumentComparator
+
+            self.comparator = DocumentComparator(
+                pipeline=self,
+                llm_client=self.llm_client,
+                verifier=self.verifier,
+                citation_engine=self.citation_engine,
+                config=self.config,
+            )
+
+        return self.comparator.compare_documents(
+            selected_documents=documents,
+            query=query,
+            aspects=aspects,
+            n_chunks_per_doc=n_chunks_per_doc,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
 
     def generate_quiz(

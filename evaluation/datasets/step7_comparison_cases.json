@@ -1,0 +1,67 @@
+[
+  {
+    "case_id": "comp_case_01",
+    "description": "2-Paper comparison across Dataset and Model",
+    "documents": ["Attention_Is_All_You_Need.pdf", "BERT_Pretraining.pdf"],
+    "aspects": ["Dataset", "Model / Algorithm"],
+    "query": "Compare the datasets and architectures of Transformer and BERT.",
+    "expected_document_count": 2,
+    "expected_aspects_count": 2,
+    "has_missing_info": false
+  },
+  {
+    "case_id": "comp_case_02",
+    "description": "3-Paper comparison across Methodology, Results, and Limitations",
+    "documents": [
+      "Attention_Is_All_You_Need.pdf",
+      "BERT_Pretraining.pdf",
+      "ResNet_Deep_Residual.pdf"
+    ],
+    "aspects": ["Methodology", "Results", "Limitations"],
+    "query": "Compare methodologies, benchmark results, and limitations across all three papers.",
+    "expected_document_count": 3,
+    "expected_aspects_count": 3,
+    "has_missing_info": false
+  },
+  {
+    "case_id": "comp_case_03",
+    "description": "Missing Information Handling (one paper has missing aspect)",
+    "documents": ["Attention_Is_All_You_Need.pdf", "ResNet_Deep_Residual.pdf"],
+    "aspects": ["BLEU Score Evaluation", "Future Work"],
+    "query": "Compare their BLEU score translation evaluation and future work.",
+    "expected_document_count": 2,
+    "expected_aspects_count": 2,
+    "has_missing_info": true,
+    "missing_target": {"document": "ResNet_Deep_Residual.pdf", "aspect": "BLEU Score Evaluation"}
+  },
+  {
+    "case_id": "comp_case_04",
+    "description": "Comprehensive 9-aspect academic matrix across 2 papers",
+    "documents": ["Attention_Is_All_You_Need.pdf", "BERT_Pretraining.pdf"],
+    "aspects": [
+      "Research Problem",
+      "Objective",
+      "Dataset",
+      "Methodology",
+      "Model / Algorithm",
+      "Evaluation Metrics",
+      "Results",
+      "Limitations",
+      "Future Work"
+    ],
+    "query": "Generate a full 9-dimension comparative analysis between Transformer and BERT.",
+    "expected_document_count": 2,
+    "expected_aspects_count": 9,
+    "has_missing_info": false
+  },
+  {
+    "case_id": "comp_case_05",
+    "description": "Document Attribution Accuracy test (prevent cross-paper metric leakage)",
+    "documents": ["BERT_Pretraining.pdf", "ResNet_Deep_Residual.pdf"],
+    "aspects": ["Evaluation Metrics", "Results"],
+    "query": "What evaluation metrics and benchmark scores did each paper report?",
+    "expected_document_count": 2,
+    "expected_aspects_count": 2,
+    "has_missing_info": false
+  }
+]

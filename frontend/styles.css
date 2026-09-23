@@ -1881,3 +1881,67 @@ button {
   color: #fca5a5;
   margin-top: 10px;
 }
+
+/* ==========================================================================
+   Step 7: Multi-Document Intelligence & Comparison Styles
+   ========================================================================== */
+.doc-checkboxes-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.doc-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.doc-checkbox-item:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.doc-checkbox-item input[type="checkbox"] {
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.chip-btn.active {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: var(--accent-primary);
+  color: #fff;
+}
+
+.compare-synthesis-card {
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.synthesis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.missing-info-cell {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.01);
+}
+

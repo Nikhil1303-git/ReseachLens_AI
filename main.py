@@ -254,6 +254,95 @@ def cmd_query(args):
         sys.exit(1)
 
 
+def cmd_compare(args):
+    """Compare documents command handler (Step 7).
+
+    Args:
+        args: Command arguments
+    """
+    logger = get_logger("compare")
+    pipeline, config = setup_pipeline()
+
+    if len(args.docs) < 2:
+        print("\nError: Multi-document comparison requires at least 2 documents. Please provide at least 2 papers with --docs.")
+        sys.exit(1)
+
+    try:
+        result = pipeline.compare_documents(
+            documents=args.docs,
+            query=args.query,
+            aspects=args.aspects,
+            n_chunks_per_doc=args.top_k,
+            temperature=args.temperature,
+        )
+
+        docs_str = ", ".join(result["documents"])
+        print(f"\n{'='*60}")
+        print(f"MULTI-DOCUMENT COMPARISON MATRIX ({len(result['documents'])} Papers)")
+        print(f"Documents: {docs_str}")
+        print(f"Focus Query: {result['query']}")
+        if "latencies" in result:
+            lats = result["latencies"]
+            print(
+                f"Latency: Total {lats.get('total_latency_ms', 0)} ms "
+                f"(Ret: {lats.get('retrieval_latency_ms', 0)} ms | "
+                f"Gen: {lats.get('generation_latency_ms', 0)} ms | "
+                f"Cite: {lats.get('citation_latency_ms', 0)} ms)"
+            )
+        print(f"{'='*60}\n")
+
+        print(result["markdown_table"])
+        print()
+
+        if result.get("synthesis"):
+            print(f"{'='*60}")
+            print("Comparative Synthesis:")
+            print(f"{'='*60}")
+            print(result["synthesis"])
+            print()
+
+        citations = result.get("citations", [])
+        if citations:
+            print(f"{'='*60}")
+            print(f"Grounded Citations & Provenance ({len(citations)} citations):")
+            print(f"{'='*60}")
+            for cit in citations:
+                c_idx = cit.get("citation_index", 1)
+                c_claim = cit.get("claim", "")
+                c_status = cit.get("claim_status", "supported").upper()
+                doc = cit.get("document_name", "Unknown Document")
+                page = cit.get("page_number", 1)
+                sec = cit.get("section") or "General"
+                cid = cit.get("chunk_id", "chunk_unknown")
+                rerank_sc = cit.get("reranker_score")
+                score_info = (
+                    f"Rerank Score: {rerank_sc:.4f}"
+                    if rerank_sc is not None
+                    else f"Score: {cit.get('confidence_score', 1.0):.4f}"
+                )
+                ev_snippet = cit.get("evidence_text", "")
+
+                status_sym = "(+)" if c_status == "SUPPORTED" else ("(~)" if c_status == "PARTIALLY_SUPPORTED" else "(-)")
+                print(f"[{c_idx}] {status_sym} [{c_status}] Claim: \"{c_claim}\"")
+                print(f"    Source: [Document: {doc} | Page: {page} | Section: {sec} | Chunk: {cid} | {score_info}]")
+                if ev_snippet:
+                    print(f"    Evidence: \"{ev_snippet}\"")
+                print()
+
+        missing = result.get("missing_information", [])
+        if missing:
+            print(f"{'='*60}")
+            print(f"Missing Information ({len(missing)} aspects not found - 0 fake citations):")
+            print(f"{'='*60}")
+            for item in missing:
+                print(f"  (?) {item.get('document')} - {item.get('aspect')}: \"Not found in document.\"")
+            print()
+
+    except Exception as e:
+        logger.error(f"Error during comparison: {str(e)}", exc_info=True)
+        sys.exit(1)
+
+
 def cmd_extract_tables(args):
     """Extract tables command handler.
 
@@ -429,6 +518,45 @@ Examples:
         help="Output JSON file path",
     )
     tables_parser.set_defaults(func=cmd_extract_tables)
+
+    # Compare command (Step 7)
+    compare_parser = subparsers.add_parser(
+        "compare", help="Compare 2 or more research papers across key dimensions"
+    )
+    compare_parser.add_argument(
+        "--docs",
+        "-d",
+        nargs="+",
+        required=True,
+        help="List of 2 or more PDF filenames or document IDs to compare",
+    )
+    compare_parser.add_argument(
+        "--query",
+        "-q",
+        type=str,
+        default=None,
+        help="Optional freeform comparison question or topic focus",
+    )
+    compare_parser.add_argument(
+        "--aspects",
+        "-a",
+        nargs="+",
+        default=None,
+        help="Specific comparison aspects (e.g. Dataset Methodology Results)",
+    )
+    compare_parser.add_argument(
+        "--top-k",
+        type=int,
+        default=4,
+        help="Number of chunks to retrieve per paper (default: 4)",
+    )
+    compare_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.2,
+        help="LLM sampling temperature (default: 0.2)",
+    )
+    compare_parser.set_defaults(func=cmd_compare)
 
     # Status command
     status_parser = subparsers.add_parser(

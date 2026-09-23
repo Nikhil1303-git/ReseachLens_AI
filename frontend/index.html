@@ -487,59 +487,94 @@
           <div class="card compare-card">
             <div class="compare-selector-bar">
               <div class="compare-info">
-                <h3>Document Comparison Matrix</h3>
-                <p>Structured dimensional analysis for multi-document synthesis.</p>
+                <h3>Multi-Paper Comparison Setup</h3>
+                <p>Select 2 or more research papers and compare them across key academic dimensions.</p>
               </div>
               <div class="compare-actions">
-                <span class="badge badge-accent">Active Collection: "documents"</span>
+                <span class="badge badge-accent" id="cmp-available-count">Loading papers...</span>
               </div>
             </div>
 
-            <div class="comparison-table-wrapper">
-              <table class="comparison-table">
-                <thead>
-                  <tr>
-                    <th style="width: 22%;">Dimension / Category</th>
-                    <th style="width: 39%;">Active Document (Indexed)</th>
-                    <th style="width: 39%;">Comparative Baseline</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td class="dim-name">📄 Source Document</td>
-                    <td id="cmp-doc-name">Currently Indexed PDF</td>
-                    <td class="dim-muted">Reference Standard / Baseline</td>
-                  </tr>
-                  <tr>
-                    <td class="dim-name">🎯 Problem Statement</td>
-                    <td>Analyzed from extracted semantic chunks in active index</td>
-                    <td class="dim-muted">Requires separate secondary collection</td>
-                  </tr>
-                  <tr>
-                    <td class="dim-name">⚙️ Methodology & Approach</td>
-                    <td>Retrieved via RAG query on methodology topics</td>
-                    <td class="dim-muted">Cross-corpus comparison</td>
-                  </tr>
-                  <tr>
-                    <td class="dim-name">📊 Reported Findings</td>
-                    <td>Extracted via Top-K semantic retrieval</td>
-                    <td class="dim-muted">Comparative metric synthesis</td>
-                  </tr>
-                  <tr>
-                    <td class="dim-name">⚠️ Stated Limitations</td>
-                    <td>Retrieved from conclusion and limitation sections</td>
-                    <td class="dim-muted">Critical difference analysis</td>
-                  </tr>
-                </tbody>
+            <!-- Paper Selection Form -->
+            <form id="compare-form" style="margin-top: 16px;">
+              <div class="doc-selection-group">
+                <label class="control-label" style="margin-bottom: 8px; font-weight: 600;">
+                  <span>Select Papers to Compare (minimum 2):</span>
+                </label>
+                <div class="doc-checkboxes-container" id="compare-doc-selector">
+                  <span class="text-muted" style="font-size: 13px;">Checking indexed documents in ChromaDB...</span>
+                </div>
+              </div>
+
+              <!-- Aspect Chips Selector -->
+              <div class="aspects-selector-group" style="margin-top: 16px;">
+                <label class="control-label" style="margin-bottom: 8px; font-weight: 600;">
+                  <span>Comparison Dimensions:</span>
+                  <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">(Click to toggle aspects)</span>
+                </label>
+                <div class="chips-row" id="compare-aspect-chips">
+                  <button type="button" class="chip-btn active" data-aspect="Research Problem">🎯 Research Problem</button>
+                  <button type="button" class="chip-btn active" data-aspect="Objective">📌 Objective</button>
+                  <button type="button" class="chip-btn active" data-aspect="Dataset">📊 Dataset</button>
+                  <button type="button" class="chip-btn active" data-aspect="Methodology">⚙️ Methodology</button>
+                  <button type="button" class="chip-btn active" data-aspect="Model / Algorithm">🧠 Model / Algorithm</button>
+                  <button type="button" class="chip-btn active" data-aspect="Evaluation Metrics">📏 Evaluation Metrics</button>
+                  <button type="button" class="chip-btn active" data-aspect="Results">🏆 Results</button>
+                  <button type="button" class="chip-btn active" data-aspect="Limitations">⚠️ Limitations</button>
+                  <button type="button" class="chip-btn active" data-aspect="Future Work">🔮 Future Work</button>
+                </div>
+              </div>
+
+              <!-- Focus Query Input -->
+              <div class="textarea-wrapper" style="margin-top: 16px;">
+                <input id="compare-query-input" type="text" class="input-text" placeholder="Optional focus question (e.g., What are the main differences in their architectures and datasets?)" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff; font-size: 13px;">
+              </div>
+
+              <div class="query-controls-bar" style="margin-top: 14px;">
+                <div class="query-options">
+                  <span style="font-size: 12px; color: var(--text-muted);">Evidence-grounded via Hybrid Retrieval + Cross-Encoder</span>
+                </div>
+                <div class="query-buttons">
+                  <button class="btn-primary" id="compare-submit-btn" type="submit">
+                    <span>Compare Papers</span>
+                    <span class="btn-arrow">⚡</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <div class="result-banner" id="compare-status-banner" style="display:none; margin-top: 16px;"></div>
+
+            <!-- Comparative Synthesis Summary -->
+            <div class="compare-synthesis-card" id="compare-synthesis-card" style="display:none; margin-top: 20px;">
+              <div class="synthesis-header">
+                <span style="font-size: 18px;">💡</span>
+                <h4 style="margin: 0; color: #fff; font-size: 14px;">Comparative Synthesis Summary</h4>
+              </div>
+              <p class="synthesis-body" id="compare-synthesis-text" style="margin-top: 8px; font-size: 13px; line-height: 1.6; color: var(--text-secondary);"></p>
+            </div>
+
+            <!-- Dynamic Comparison Matrix Table -->
+            <div class="comparison-table-wrapper" id="compare-matrix-wrapper" style="display:none; margin-top: 20px;">
+              <table class="comparison-table" id="compare-matrix-table">
+                <thead id="compare-matrix-thead"></thead>
+                <tbody id="compare-matrix-tbody"></tbody>
               </table>
             </div>
 
-            <div class="info-box" style="margin-top:24px;">
-              <div class="info-icon">💡</div>
-              <div class="info-content">
-                <strong>Academic Presentation Note:</strong>
-                <span>The current vector store maintains one persistent collection (<code>documents</code>). Multi-document comparative querying is performed by indexing multi-paper collections or querying across chunk metadata.</span>
+            <!-- Grounded Citations & Provenance for Comparison -->
+            <div class="citations-section" id="compare-citations-section" style="display:none; margin-top: 24px;">
+              <div class="citations-header">
+                <div class="citations-title-group">
+                  <span class="citations-icon">📜</span>
+                  <div>
+                    <h3 class="citations-title">Comparison Grounded Citations</h3>
+                    <span class="citations-subtitle">Every matrix claim verified against retrieved paper sections and pages</span>
+                  </div>
+                </div>
+                <span class="badge badge-accent" id="compare-citations-count">0 citations</span>
               </div>
+              <div class="citations-list" id="compare-citations-list"></div>
             </div>
           </div>
         </section>

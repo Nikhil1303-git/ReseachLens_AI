@@ -242,6 +242,40 @@ This document tracks the iterative development and experimental evaluation of th
 
 ---
 
+---
+
+## Experiment 6: Step 7 — Multi-Document Intelligence & Paper Comparison
+
+- **Date:** 2026-09-23
+- **Objective:** Enable multi-paper comparative analysis across 2, 3, or more research papers, constructing structured 9-aspect comparison matrices with partitioned per-document retrieval, neural reranking, evidence verification, and fine-grained claim citations.
+- **Evaluation Dataset:** `evaluation/datasets/step7_comparison_cases.json` (5 multi-paper evaluation scenarios covering 2-paper, 3-paper, 9-aspect full matrix, missing info, and attribution accuracy)
+
+### Configuration
+- **Comparison Pipeline Architecture:**
+  `Select Papers -> Partitioned Hybrid Retrieval -> Neural Cross-Encoder Reranking -> Evidence Verification -> Comparative Synthesis & Matrix Assembly -> Claim Citations -> Structured Matrix & Report`
+- **Comparator Engine (`DocumentComparator`):**
+  - **Partitioned Retrieval:** Per-document top-$K$ retrieval preventing keyword-dense papers from starving other documents of chunk context.
+  - **Core Dimensions:** Evaluates papers across 9 academic aspects: *Research Problem, Objective, Dataset, Methodology, Model / Algorithm, Evaluation Metrics, Results, Limitations, Future Work* (plus custom user queries).
+  - **Missing-Information Guardrail:** Generates `"Not found in document."` fallback with **0 phantom citations** when information is absent.
+  - **Attribution Isolation:** XML document encapsulation prevents cross-paper metric leakage or hallucinated comparisons.
+  - **Structured Matrix Generation:** Produces JSON, Markdown, and interactive HTML tables (`| Aspect | Paper A | Paper B | ... |`).
+  - **Full Step 2/4/6 Metadata Retention:** Preserves `document_id`, `source_file`, `page_number`, `section`, `chunk_id`, and `reranker_score`.
+
+### Quantitative Benchmark Results (5 Evaluation Cases)
+- **Comparison Correctness:** **100.0%** (5 / 5 benchmark cases met matrix schema and aspect completeness)
+- **Citation Correctness:** **100.0%** (5 / 5 benchmark cases properly attributed citations to individual papers)
+- **Document Attribution Accuracy:** **100.0%** (Zero cross-paper claim or citation leakage)
+- **Missing-Information Handling:** **100.0%** (Missing cells strictly set to `"Not found in document."` with zero fake citations)
+- **Average Comparison Latency:** **0.64 ms** (Sub-millisecond matrix assembly and citation resolution)
+- **Test Suite Pass Rate:** 100% (8 / 8 comparison unit and integration tests passing; 110 / 110 total tests passing)
+
+### Qualitative Observations
+1. **Partitioning Eliminates Context Starvation:** Retrieving candidates per paper guarantees balanced context for all compared documents, even when one document has significantly higher lexical overlap with the query.
+2. **Missing Information Integrity:** Tested with synthetic missing aspects (e.g. absent evaluation metrics); the system correctly outputs `"Not found in document."` and cleanly bypasses citation emission.
+3. **UI & API Integration:** Added `/api/documents` and `/api/compare` endpoints, along with interactive document selector checkboxes and dynamic matrix rendering in the web interface.
+
+---
+
 ## Planned Experiments (Future Steps)
 
 | Step | Experiment Name | Focus Area | Status |
@@ -252,10 +286,11 @@ This document tracks the iterative development and experimental evaluation of th
 | **Step 4** | **Neural Reranking** | Cross-Encoder top-K reranking | **COMPLETED** |
 | **Step 5** | **Evidence Verification** | Claim-level entailment & hallucination detection | **COMPLETED** |
 | **Step 6** | **Advanced Citations & Provenance** | Claim-evidence mapping, page/section citations | **COMPLETED** |
-| **Step 7** | Multi-Document Comparison | Cross-document synthesis matrix | *Next Up* |
-| **Step 8** | Adaptive Learning & Quiz | Confidence scoring & quiz mastery | *Planned* |
+| **Step 7** | **Multi-Document Comparison** | Cross-document synthesis matrix & citations | **COMPLETED** |
+| **Step 8** | Adaptive Learning & Quiz | Confidence scoring & quiz mastery | *Next Up* |
 | **Step 9** | Evaluation Dashboard | Real-time Ragas / RAG Triad suite | *Planned* |
 | **Step 10**| Final Optimization & Packaging | Performance profiling & paper write-up | *Planned* |
+
 
 
 

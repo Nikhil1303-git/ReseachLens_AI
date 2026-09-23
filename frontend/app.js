@@ -655,6 +655,214 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Initial status fetch on boot
+  // --------------------------------------------------------------------------
+  // Multi-Document Comparison (Step 7)
+  // --------------------------------------------------------------------------
+  async function populateComparisonDocSelector() {
+    const container = $('compare-doc-selector');
+    const badge = $('cmp-available-count');
+    if (!container) return;
+
+    try {
+      const data = await api('/api/documents');
+      const docs = data.documents || [];
+
+      if (!docs.length) {
+        container.innerHTML = '<span class="text-muted" style="font-size: 13px;">No documents found in index. Upload PDFs in the Documents tab first.</span>';
+        if (badge) badge.textContent = '0 indexed papers';
+        return;
+      }
+
+      if (badge) {
+        badge.textContent = `${docs.length} indexed paper${docs.length === 1 ? '' : 's'}`;
+      }
+
+      container.innerHTML = '';
+      docs.forEach((d, idx) => {
+        const item = document.createElement('label');
+        item.className = 'doc-checkbox-item';
+        const docName = d.source_file || d.document_id || `Doc ${idx + 1}`;
+        item.innerHTML = `
+          <input type="checkbox" name="compare_docs" value="${docName}" ${idx < 3 ? 'checked' : ''}>
+          <span>📄 ${docName} (${d.chunk_count || 1} chunks)</span>
+        `;
+        container.appendChild(item);
+      });
+    } catch (e) {
+      console.warn('Could not load documents for comparison:', e);
+      if (container) {
+        container.innerHTML = '<span class="text-muted" style="font-size: 13px;">Could not retrieve documents. Make sure pipeline is active.</span>';
+      }
+    }
+  }
+
+  // Toggle aspect chips
+  $('compare-aspect-chips')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip-btn');
+    if (!btn) return;
+    btn.classList.toggle('active');
+  });
+
+  // Compare Form Submission
+  $('compare-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const checkedBoxes = Array.from(document.querySelectorAll('input[name="compare_docs"]:checked'));
+    const selectedDocs = checkedBoxes.map((cb) => cb.value);
+    const submitBtn = $('compare-submit-btn');
+    const statusBanner = $('compare-status-banner');
+    const synthesisCard = $('compare-synthesis-card');
+    const synthesisText = $('compare-synthesis-text');
+    const matrixWrapper = $('compare-matrix-wrapper');
+    const matrixThead = $('compare-matrix-thead');
+    const matrixTbody = $('compare-matrix-tbody');
+    const citationsSection = $('compare-citations-section');
+    const citationsList = $('compare-citations-list');
+    const citationsCount = $('compare-citations-count');
+    const queryInput = $('compare-query-input');
+
+    if (selectedDocs.length < 2) {
+      showToast('Please select at least 2 papers to compare.', 'info');
+      return;
+    }
+
+    const activeChips = Array.from(document.querySelectorAll('#compare-aspect-chips .chip-btn.active'));
+    const selectedAspects = activeChips.map((c) => c.dataset.aspect || c.textContent.trim());
+
+    // UI Loading state
+    submitBtn.disabled = true;
+    submitBtn.querySelector('span').textContent = 'Comparing Papers...';
+    statusBanner.style.display = 'block';
+    statusBanner.className = 'result-banner';
+    statusBanner.textContent = `Analyzing ${selectedDocs.length} papers across ${selectedAspects.length || 'all'} dimensions via hybrid retrieval & neural reranking...`;
+    synthesisCard.style.display = 'none';
+    matrixWrapper.style.display = 'none';
+    if (citationsSection) citationsSection.style.display = 'none';
+
+    try {
+      const payload = {
+        documents: selectedDocs,
+        aspects: selectedAspects.length ? selectedAspects : null,
+        query: queryInput ? queryInput.value.trim() : null,
+        top_k: 4,
+      };
+
+      const result = await api('/api/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      statusBanner.style.display = 'none';
+
+      // 1. Render Synthesis Summary
+      if (result.synthesis && synthesisCard && synthesisText) {
+        synthesisText.textContent = result.synthesis;
+        synthesisCard.style.display = 'block';
+      }
+
+      // 2. Render Dynamic Comparison Matrix Table
+      if (result.matrix && matrixWrapper && matrixThead && matrixTbody) {
+        matrixThead.innerHTML = '';
+        matrixTbody.innerHTML = '';
+
+        const docs = result.documents || selectedDocs;
+
+        // Table Header
+        const headerTr = document.createElement('tr');
+        const thAspect = document.createElement('th');
+        thAspect.style.width = '20%';
+        thAspect.textContent = 'Dimension / Aspect';
+        headerTr.appendChild(thAspect);
+
+        const colWidth = `${Math.floor(80 / docs.length)}%`;
+        docs.forEach((doc) => {
+          const th = document.createElement('th');
+          th.style.width = colWidth;
+          th.textContent = `📄 ${doc}`;
+          headerTr.appendChild(th);
+        });
+        matrixThead.appendChild(headerTr);
+
+        // Table Rows
+        result.matrix.forEach((row) => {
+          const tr = document.createElement('tr');
+          const tdAspect = document.createElement('td');
+          tdAspect.className = 'dim-name';
+          tdAspect.textContent = row.aspect || 'Aspect';
+          tr.appendChild(tdAspect);
+
+          const vals = row.values || {};
+          docs.forEach((doc) => {
+            const td = document.createElement('td');
+            const val = vals[doc] || 'Not found in document.';
+            if (val.toLowerCase().includes('not found in document')) {
+              td.className = 'missing-info-cell';
+              td.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">Not found in document</span>';
+            } else {
+              td.textContent = val;
+            }
+            tr.appendChild(td);
+          });
+
+          matrixTbody.appendChild(tr);
+        });
+
+        matrixWrapper.style.display = 'block';
+      }
+
+      // 3. Render Grounded Citations
+      if (citationsSection && citationsList) {
+        citationsList.innerHTML = '';
+        const cits = result.citations || [];
+        if (cits.length > 0) {
+          citationsSection.style.display = 'block';
+          if (citationsCount) {
+            citationsCount.textContent = `${cits.length} grounded citation${cits.length === 1 ? '' : 's'}`;
+          }
+
+          cits.forEach((cit) => {
+            const card = document.createElement('div');
+            card.className = 'citation-card supported';
+            const scoreText = cit.reranker_score !== null && cit.reranker_score !== undefined
+              ? `Rerank: ${Number(cit.reranker_score).toFixed(3)}`
+              : `Score: ${Number(cit.confidence_score || 1.0).toFixed(2)}`;
+
+            card.innerHTML = `
+              <div class="citation-top-row">
+                <span class="citation-claim-title">[${cit.citation_index}] "${cit.claim}"</span>
+                <span class="evidence-badge status-supported">SUPPORTED</span>
+              </div>
+              <div class="citation-meta-pills">
+                <span class="citation-pill doc">📄 ${cit.document_name}</span>
+                <span class="citation-pill">Page ${cit.page_number}</span>
+                ${cit.section ? `<span class="citation-pill">Sec: ${cit.section}</span>` : ''}
+                <span class="citation-pill">Chunk: ${cit.chunk_id}</span>
+                <span class="citation-pill score">${scoreText}</span>
+              </div>
+              ${cit.evidence_text ? `<div class="citation-snippet">"${cit.evidence_text}"</div>` : ''}
+            `;
+            citationsList.appendChild(card);
+          });
+        } else {
+          citationsSection.style.display = 'none';
+        }
+      }
+
+      showToast(`Comparison complete across ${selectedDocs.length} papers!`, 'success');
+    } catch (err) {
+      statusBanner.style.display = 'block';
+      statusBanner.className = 'result-banner error';
+      statusBanner.textContent = `Comparison failed: ${err.message}`;
+      showToast(`Comparison failed: ${err.message}`, 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.querySelector('span').textContent = 'Compare Papers';
+    }
+  });
+
+  // Initial status fetch and comparison doc population
   refreshStatus();
+  populateComparisonDocSelector();
 });
+
