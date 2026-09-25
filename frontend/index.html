@@ -41,6 +41,10 @@
           <span class="nav-icon">🔍</span>
           <span class="nav-label">Compare Documents</span>
         </button>
+        <button class="nav-item" data-view="intelligence" type="button">
+          <span class="nav-icon">🔬</span>
+          <span class="nav-label">Research Intelligence</span>
+        </button>
         <button class="nav-item" data-view="quiz" type="button">
           <span class="nav-icon">📝</span>
           <span class="nav-label">Generate Quiz</span>
@@ -575,6 +579,147 @@
                 <span class="badge badge-accent" id="compare-citations-count">0 citations</span>
               </div>
               <div class="citations-list" id="compare-citations-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- VIEW: RESEARCH INTELLIGENCE & GAP DETECTION (Step 8) -->
+        <!-- ===================================================================== -->
+        <section class="view-panel" id="view-intelligence">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">Research Intelligence & Gap Detection</h1>
+              <p class="view-desc">Synthesize multi-paper literature reviews, discover evidence-grounded research gaps, and formulate actionable research questions.</p>
+            </div>
+          </div>
+
+          <div class="card compare-card">
+            <div class="compare-selector-bar">
+              <div class="compare-info">
+                <h3>Multi-Paper Research Analysis</h3>
+                <p>Select 2 or more research papers and specify an optional topic focus.</p>
+              </div>
+              <div class="compare-actions">
+                <span class="badge badge-accent" id="intel-available-count">Loading papers...</span>
+              </div>
+            </div>
+
+            <!-- Paper Selection Form -->
+            <form id="intelligence-form" style="margin-top: 16px;">
+              <div class="doc-selection-group">
+                <label class="control-label" style="margin-bottom: 8px; font-weight: 600;">
+                  <span>Selected Papers (minimum 2):</span>
+                </label>
+                <div class="doc-checkboxes-container" id="intel-doc-selector">
+                  <span class="text-muted" style="font-size: 13px;">Checking indexed documents in ChromaDB...</span>
+                </div>
+              </div>
+
+              <!-- Topic Focus Input -->
+              <div class="textarea-wrapper" style="margin-top: 16px;">
+                <input id="intel-topic-input" type="text" class="input-text" placeholder="Optional focus topic (e.g., Attention mechanisms, self-supervised learning, empirical benchmark comparisons)" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: #fff; font-size: 13px;">
+              </div>
+
+              <div class="query-controls-bar" style="margin-top: 14px;">
+                <div class="query-options">
+                  <span style="font-size: 12px; color: var(--text-muted);">Grounded via Partitioned Hybrid Retrieval + Reranking + Entailment Verification</span>
+                </div>
+                <div class="query-buttons">
+                  <button class="btn-primary" id="intel-submit-btn" type="submit">
+                    <span>Analyze Literature & Gaps</span>
+                    <span class="btn-arrow">⚡</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <div class="result-banner" id="intel-status-banner" style="display:none; margin-top: 16px;"></div>
+
+            <!-- Results Container -->
+            <div id="intel-results-wrapper" style="display:none; margin-top: 24px;">
+
+              <!-- 1. Literature Review Summary -->
+              <div class="intel-block-card">
+                <div class="intel-card-header">
+                  <span style="font-size: 18px;">📖</span>
+                  <h4 style="margin: 0; color: #fff; font-size: 15px;">Literature Review Synthesis</h4>
+                </div>
+                <p id="intel-lr-summary" class="intel-text-body" style="margin-top: 8px; font-size: 13px; line-height: 1.6; color: var(--text-secondary);"></p>
+              </div>
+
+              <!-- 2. Key Findings, Methods, Datasets, Results -->
+              <div class="intel-grid-2col" style="margin-top: 16px;">
+                <div class="intel-subcard">
+                  <h5 class="intel-subcard-title" style="margin-top: 0; margin-bottom: 8px; color: #fff; font-size: 13px;">🔍 Key Findings per Paper</h5>
+                  <div id="intel-key-findings" class="intel-list-container"></div>
+                </div>
+                <div class="intel-subcard">
+                  <h5 class="intel-subcard-title" style="margin-top: 0; margin-bottom: 8px; color: #fff; font-size: 13px;">⚙️ Methods & Datasets</h5>
+                  <div id="intel-methods-datasets" class="intel-list-container"></div>
+                </div>
+              </div>
+
+              <!-- 3. Common Themes & Differences -->
+              <div class="intel-grid-2col" style="margin-top: 16px;">
+                <div class="intel-subcard">
+                  <h5 class="intel-subcard-title" style="margin-top: 0; margin-bottom: 8px; color: #fff; font-size: 13px;">🤝 Common Themes</h5>
+                  <ul id="intel-common-themes" class="intel-bullet-list" style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-secondary); line-height: 1.6;"></ul>
+                </div>
+                <div class="intel-subcard">
+                  <h5 class="intel-subcard-title" style="margin-top: 0; margin-bottom: 8px; color: #fff; font-size: 13px;">⚡ Key Differences</h5>
+                  <ul id="intel-differences" class="intel-bullet-list" style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-secondary); line-height: 1.6;"></ul>
+                </div>
+              </div>
+
+              <!-- 4. Paper Limitations -->
+              <div class="intel-block-card" style="margin-top: 16px;">
+                <div class="intel-card-header">
+                  <span style="font-size: 18px;">⚠️</span>
+                  <h4 style="margin: 0; color: #fff; font-size: 15px;">Paper Limitations & Constraints</h4>
+                </div>
+                <div id="intel-limitations" class="intel-list-container" style="margin-top: 8px;"></div>
+              </div>
+
+              <!-- 5. Potential Research Gaps -->
+              <div class="intel-block-card" style="margin-top: 20px;">
+                <div class="intel-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">🎯</span>
+                    <h4 style="margin: 0; color: #fff; font-size: 15px;">Potential Research Gaps</h4>
+                  </div>
+                  <span class="badge badge-accent" id="intel-gaps-badge">0 Gaps</span>
+                </div>
+                <div id="intel-gaps-list" class="intel-gaps-container" style="margin-top: 12px;"></div>
+              </div>
+
+              <!-- 6. Suggested Research Questions -->
+              <div class="intel-block-card" style="margin-top: 20px;">
+                <div class="intel-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">💡</span>
+                    <h4 style="margin: 0; color: #fff; font-size: 15px;">Suggested Research Questions</h4>
+                  </div>
+                  <span class="badge" id="intel-rqs-badge">0 Questions</span>
+                </div>
+                <div id="intel-rqs-list" class="intel-rqs-container" style="margin-top: 12px;"></div>
+              </div>
+
+              <!-- 7. Supporting Citations & Evidence -->
+              <div class="citations-section" id="intel-citations-section" style="margin-top: 24px;">
+                <div class="citations-header">
+                  <div class="citations-title-group">
+                    <span class="citations-icon">📜</span>
+                    <div>
+                      <h3 class="citations-title">Supporting Citations & Evidence</h3>
+                      <span class="citations-subtitle">Every claim and gap verified against document passages</span>
+                    </div>
+                  </div>
+                  <span class="badge badge-accent" id="intel-citations-count">0 citations</span>
+                </div>
+                <div class="citations-list" id="intel-citations-list"></div>
+              </div>
+
             </div>
           </div>
         </section>

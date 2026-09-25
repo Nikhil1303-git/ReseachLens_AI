@@ -24,6 +24,7 @@ class RAGPipeline:
         verifier=None,
         citation_engine=None,
         comparator=None,
+        research_intelligence=None,
         config=None,
     ):
         """Initialize RAG pipeline.
@@ -38,6 +39,7 @@ class RAGPipeline:
             verifier: Optional EvidenceVerifier instance
             citation_engine: Optional CitationEngine instance
             comparator: Optional DocumentComparator instance
+            research_intelligence: Optional ResearchIntelligenceEngine instance
             config: Optional AppConfig instance
         """
         self.pdf_extractor = pdf_extractor
@@ -169,6 +171,24 @@ class RAGPipeline:
                 logger.warning(f"Could not auto-initialize DocumentComparator: {e}")
                 self.comparator = None
 
+        # Initialize or wire ResearchIntelligenceEngine (Step 8)
+        if research_intelligence is not None:
+            self.research_intelligence = research_intelligence
+        else:
+            try:
+                from app.intelligence import ResearchIntelligenceEngine
+
+                self.research_intelligence = ResearchIntelligenceEngine(
+                    pipeline=self,
+                    llm_client=self.llm_client,
+                    verifier=self.verifier,
+                    citation_engine=self.citation_engine,
+                    config=self.config,
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize ResearchIntelligenceEngine: {e}")
+                self.research_intelligence = None
+
         if config and hasattr(config, "hybrid") and config.hybrid:
             self.retrieval_mode = config.hybrid.retrieval_mode
         else:
@@ -179,7 +199,8 @@ class RAGPipeline:
             f"reranker={'enabled' if (self.reranker and getattr(self.reranker, 'model', None)) else 'disabled'}, "
             f"verifier={'enabled' if self.verifier is not None else 'disabled'}, "
             f"citations={'enabled' if self.citation_engine is not None else 'disabled'}, "
-            f"comparator={'enabled' if self.comparator is not None else 'disabled'})"
+            f"comparator={'enabled' if self.comparator is not None else 'disabled'}, "
+            f"intelligence={'enabled' if self.research_intelligence is not None else 'disabled'})"
         )
 
 
@@ -768,6 +789,46 @@ Answer:"""
             max_tokens=max_tokens,
         )
 
+    def analyze_research(
+        self,
+        documents: List[str],
+        focus_topic: Optional[str] = None,
+        n_chunks_per_doc: int = 4,
+        temperature: float = 0.2,
+        max_tokens: int = 3000,
+    ) -> Dict[str, Any]:
+        """Perform multi-paper literature review and research gap discovery (Step 8).
+
+        Args:
+            documents: List of 2 or more document filenames or IDs
+            focus_topic: Optional specific research domain or topic focus
+            n_chunks_per_doc: Number of top chunks to retrieve per paper
+            temperature: Sampling temperature for generation
+            max_tokens: Maximum tokens in response
+
+        Returns:
+            Structured research intelligence results with literature_review,
+            research_gaps, research_questions, and citations.
+        """
+        if getattr(self, "research_intelligence", None) is None:
+            from app.intelligence import ResearchIntelligenceEngine
+
+            self.research_intelligence = ResearchIntelligenceEngine(
+                pipeline=self,
+                llm_client=self.llm_client,
+                verifier=self.verifier,
+                citation_engine=self.citation_engine,
+                config=self.config,
+            )
+
+        return self.research_intelligence.analyze_research(
+            selected_documents=documents,
+            focus_topic=focus_topic,
+            n_chunks_per_doc=n_chunks_per_doc,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
 
     def generate_quiz(
         self,
@@ -949,5 +1010,8 @@ Respond with ONLY valid JSON, no other text, in exactly this format:
             }
         else:
             status["verification"] = {"enabled": False}
+
+        status["comparator"] = {"enabled": self.comparator is not None}
+        status["intelligence"] = {"enabled": self.research_intelligence is not None}
 
         return status

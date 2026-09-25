@@ -861,8 +861,249 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Initial status fetch and comparison doc population
+  // --------------------------------------------------------------------------
+  // Step 8: Research Intelligence & Gap Detection
+  // --------------------------------------------------------------------------
+  async function populateIntelligenceDocSelector() {
+    const container = $('intel-doc-selector');
+    const badge = $('intel-available-count');
+    if (!container) return;
+
+    try {
+      const data = await api('/api/documents');
+      const docs = data.documents || [];
+
+      if (!docs.length) {
+        container.innerHTML = '<span class="text-muted" style="font-size: 13px;">No documents found in index. Upload PDFs in the Documents tab first.</span>';
+        if (badge) badge.textContent = '0 indexed papers';
+        return;
+      }
+
+      if (badge) {
+        badge.textContent = `${docs.length} indexed paper${docs.length === 1 ? '' : 's'}`;
+      }
+
+      container.innerHTML = '';
+      docs.forEach((d, idx) => {
+        const item = document.createElement('label');
+        item.className = 'doc-checkbox-item';
+        const docName = d.source_file || d.document_id || `Doc ${idx + 1}`;
+        item.innerHTML = `
+          <input type="checkbox" name="intel_docs" value="${docName}" ${idx < 3 ? 'checked' : ''}>
+          <span>📄 ${docName} (${d.chunk_count || 1} chunks)</span>
+        `;
+        container.appendChild(item);
+      });
+    } catch (e) {
+      console.warn('Could not load documents for intelligence analysis:', e);
+      if (container) {
+        container.innerHTML = '<span class="text-muted" style="font-size: 13px;">Could not retrieve documents. Make sure pipeline is active.</span>';
+      }
+    }
+  }
+
+  // Research Intelligence Form Submission
+  $('intelligence-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const checkedBoxes = Array.from(document.querySelectorAll('input[name="intel_docs"]:checked'));
+    const selectedDocs = checkedBoxes.map((cb) => cb.value);
+    const submitBtn = $('intel-submit-btn');
+    const statusBanner = $('intel-status-banner');
+    const resultsWrapper = $('intel-results-wrapper');
+    const lrSummary = $('intel-lr-summary');
+    const keyFindings = $('intel-key-findings');
+    const methodsDatasets = $('intel-methods-datasets');
+    const commonThemes = $('intel-common-themes');
+    const differences = $('intel-differences');
+    const limitations = $('intel-limitations');
+    const gapsList = $('intel-gaps-list');
+    const gapsBadge = $('intel-gaps-badge');
+    const rqsList = $('intel-rqs-list');
+    const rqsBadge = $('intel-rqs-badge');
+    const citationsList = $('intel-citations-list');
+    const citationsCount = $('intel-citations-count');
+    const topicInput = $('intel-topic-input');
+
+    if (selectedDocs.length < 2) {
+      showToast('Please select at least 2 papers for research intelligence analysis.', 'info');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.querySelector('span').textContent = 'Analyzing Literature & Gaps...';
+    statusBanner.style.display = 'block';
+    statusBanner.className = 'result-banner';
+    statusBanner.textContent = `Analyzing ${selectedDocs.length} papers via partitioned retrieval, reranking & evidence verification...`;
+    resultsWrapper.style.display = 'none';
+
+    try {
+      const payload = {
+        documents: selectedDocs,
+        topic: topicInput ? topicInput.value.trim() : null,
+        top_k: 4,
+      };
+
+      const result = await api('/api/research/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      statusBanner.style.display = 'none';
+      resultsWrapper.style.display = 'block';
+
+      // 1. Literature Review Summary
+      const lr = result.literature_review || {};
+      if (lrSummary) {
+        lrSummary.textContent = lr.summary || 'Literature review synthesis completed.';
+      }
+
+      // 2. Key Findings
+      if (keyFindings) {
+        keyFindings.innerHTML = '';
+        const findings = lr.key_findings || {};
+        Object.entries(findings).forEach(([doc, finding]) => {
+          const div = document.createElement('div');
+          div.className = 'intel-list-item';
+          div.innerHTML = `<strong>📄 ${doc}:</strong> ${finding}`;
+          keyFindings.appendChild(div);
+        });
+      }
+
+      // Methods & Datasets
+      if (methodsDatasets) {
+        methodsDatasets.innerHTML = '';
+        const methods = lr.methods || {};
+        const datasets = lr.datasets || {};
+        selectedDocs.forEach((doc) => {
+          const div = document.createElement('div');
+          div.className = 'intel-list-item';
+          div.innerHTML = `<strong>📄 ${doc}:</strong> Method: ${methods[doc] || 'Reported in text.'} | Dataset: ${datasets[doc] || 'Reported in text.'}`;
+          methodsDatasets.appendChild(div);
+        });
+      }
+
+      // 3. Common Themes & Differences
+      if (commonThemes) {
+        commonThemes.innerHTML = '';
+        const themes = lr.common_themes || [];
+        themes.forEach((t) => {
+          const li = document.createElement('li');
+          li.textContent = t;
+          commonThemes.appendChild(li);
+        });
+      }
+
+      if (differences) {
+        differences.innerHTML = '';
+        const diffs = lr.differences || [];
+        diffs.forEach((d) => {
+          const li = document.createElement('li');
+          li.textContent = d;
+          differences.appendChild(li);
+        });
+      }
+
+      // 4. Limitations
+      if (limitations) {
+        limitations.innerHTML = '';
+        const lims = lr.limitations || {};
+        Object.entries(lims).forEach(([doc, lim]) => {
+          const div = document.createElement('div');
+          div.className = 'intel-list-item';
+          const isMissing = lim.toLowerCase().includes('insufficient evidence');
+          div.innerHTML = `<strong>📄 ${doc}:</strong> ${isMissing ? '<span style="color:var(--text-muted); font-style:italic;">Insufficient evidence.</span>' : lim}`;
+          limitations.appendChild(div);
+        });
+      }
+
+      // 5. Research Gaps
+      const gaps = result.research_gaps || [];
+      if (gapsBadge) gapsBadge.textContent = `${gaps.length} Gap${gaps.length === 1 ? '' : 's'}`;
+      if (gapsList) {
+        gapsList.innerHTML = '';
+        gaps.forEach((g) => {
+          const card = document.createElement('div');
+          card.className = 'gap-card';
+          card.innerHTML = `
+            <div class="gap-card-header">
+              <span class="gap-category-pill">${g.category || 'limitation'}</span>
+              <span class="gap-validation-pill">⚠️ ${g.validation_note || 'Requires researcher validation.'}</span>
+            </div>
+            <div class="gap-desc"><strong>${g.gap_id}:</strong> ${g.description}</div>
+            ${g.evidence ? `<div class="gap-evidence-quote">"${g.evidence}"</div>` : ''}
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Sources: ${(g.source_papers || []).join(', ')}</div>
+          `;
+          gapsList.appendChild(card);
+        });
+      }
+
+      // 6. Research Questions
+      const rqs = result.research_questions || [];
+      if (rqsBadge) rqsBadge.textContent = `${rqs.length} Question${rqs.length === 1 ? '' : 's'}`;
+      if (rqsList) {
+        rqsList.innerHTML = '';
+        rqs.forEach((q) => {
+          const card = document.createElement('div');
+          card.className = 'rq-card';
+          card.innerHTML = `
+            <div class="rq-header">
+              <span class="rq-badge">${q.question_id}</span>
+              <span class="rq-target-gap">Addresses: ${q.gap_id}</span>
+            </div>
+            <div class="rq-question-text">${q.question}</div>
+            ${q.rationale ? `<div class="rq-rationale">${q.rationale}</div>` : ''}
+          `;
+          rqsList.appendChild(card);
+        });
+      }
+
+      // 7. Grounded Citations
+      const cits = result.citations || [];
+      if (citationsCount) citationsCount.textContent = `${cits.length} grounded citation${cits.length === 1 ? '' : 's'}`;
+      if (citationsList) {
+        citationsList.innerHTML = '';
+        cits.forEach((cit) => {
+          const card = document.createElement('div');
+          card.className = 'citation-card supported';
+          const scoreText = cit.reranker_score !== null && cit.reranker_score !== undefined
+            ? `Rerank: ${Number(cit.reranker_score).toFixed(3)}`
+            : `Score: ${Number(cit.confidence_score || 1.0).toFixed(2)}`;
+
+          card.innerHTML = `
+            <div class="citation-top-row">
+              <span class="citation-claim-title">[${cit.citation_index}] "${cit.claim}"</span>
+              <span class="evidence-badge status-supported">SUPPORTED</span>
+            </div>
+            <div class="citation-meta-pills">
+              <span class="citation-pill doc">📄 ${cit.document_name}</span>
+              <span class="citation-pill">Page ${cit.page_number}</span>
+              ${cit.section ? `<span class="citation-pill">Sec: ${cit.section}</span>` : ''}
+              <span class="citation-pill">Chunk: ${cit.chunk_id}</span>
+              <span class="citation-pill score">${scoreText}</span>
+            </div>
+            ${cit.evidence_text ? `<div class="citation-snippet">"${cit.evidence_text}"</div>` : ''}
+          `;
+          citationsList.appendChild(card);
+        });
+      }
+
+      showToast(`Research intelligence analysis complete across ${selectedDocs.length} papers!`, 'success');
+    } catch (err) {
+      statusBanner.style.display = 'block';
+      statusBanner.className = 'result-banner error';
+      statusBanner.textContent = `Analysis failed: ${err.message}`;
+      showToast(`Analysis failed: ${err.message}`, 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.querySelector('span').textContent = 'Analyze Literature & Gaps';
+    }
+  });
+
+  // Initial status fetch and document selector population
   refreshStatus();
   populateComparisonDocSelector();
+  populateIntelligenceDocSelector();
 });
 

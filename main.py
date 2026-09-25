@@ -343,6 +343,157 @@ def cmd_compare(args):
         sys.exit(1)
 
 
+def cmd_research(args):
+    """Research intelligence and research gap detection command handler (Step 8).
+
+    Args:
+        args: Command arguments
+    """
+    logger = get_logger("research")
+    pipeline, config = setup_pipeline()
+
+    if len(args.docs) < 2:
+        print("\nError: Research intelligence requires at least 2 documents. Please provide at least 2 papers with --docs.")
+        sys.exit(1)
+
+    try:
+        result = pipeline.analyze_research(
+            documents=args.docs,
+            focus_topic=args.topic,
+            n_chunks_per_doc=args.top_k,
+            temperature=args.temperature,
+        )
+
+        docs_str = ", ".join(result["documents"])
+        print(f"\n{'='*70}")
+        print(f"RESEARCH INTELLIGENCE & GAP DETECTION ({len(result['documents'])} Papers)")
+        print(f"Papers: {docs_str}")
+        print(f"Topic: {result['topic']}")
+        if "latencies" in result:
+            lats = result["latencies"]
+            print(
+                f"Latency: Total {lats.get('total_latency_ms', 0)} ms "
+                f"(Ret: {lats.get('retrieval_latency_ms', 0)} ms | "
+                f"Gen: {lats.get('generation_latency_ms', 0)} ms | "
+                f"Cite: {lats.get('citation_latency_ms', 0)} ms)"
+            )
+        print(f"{'='*70}\n")
+
+        # 1. Literature Review
+        lr = result.get("literature_review", {})
+        if lr.get("summary"):
+            print("--- LITERATURE REVIEW SUMMARY ---")
+            print(lr["summary"])
+            print()
+
+        # Key Findings
+        if lr.get("key_findings"):
+            print("--- KEY FINDINGS ---")
+            for doc, finding in lr["key_findings"].items():
+                print(f"  * [{doc}]: {finding}")
+            print()
+
+        # Common Themes & Differences
+        if lr.get("common_themes"):
+            print("--- COMMON THEMES ---")
+            for theme in lr["common_themes"]:
+                print(f"  * {theme}")
+            print()
+
+        if lr.get("differences"):
+            print("--- KEY DIFFERENCES ---")
+            for diff in lr["differences"]:
+                print(f"  * {diff}")
+            print()
+
+        # Limitations
+        if lr.get("limitations"):
+            print("--- PAPER LIMITATIONS ---")
+            for doc, lim in lr["limitations"].items():
+                print(f"  * [{doc}]: {lim}")
+            print()
+
+        # 2. Research Gaps
+        gaps = result.get("research_gaps", [])
+        print(f"{'='*70}")
+        print(f"IDENTIFIED RESEARCH GAPS ({len(gaps)} gaps detected)")
+        print(f"{'='*70}")
+        for gap in gaps:
+            gid = gap.get("gap_id", "GAP")
+            cat = gap.get("category", "limitation").upper()
+            desc = gap.get("description", "")
+            ev = gap.get("evidence", "")
+            val_note = gap.get("validation_note", "Requires researcher validation.")
+            src = ", ".join(gap.get("source_papers", []))
+
+            print(f"[{gid}] [{cat}] Papers: {src}")
+            print(f"  Description: {desc}")
+            if ev:
+                print(f"  Evidence: \"{ev}\"")
+            print(f"  Notice: (!) {val_note}")
+            print()
+
+        # 3. Research Questions
+        rqs = result.get("research_questions", [])
+        if rqs:
+            print(f"{'='*70}")
+            print(f"SUGGESTED RESEARCH QUESTIONS ({len(rqs)} questions)")
+            print(f"{'='*70}")
+            for rq in rqs:
+                qid = rq.get("question_id", "RQ")
+                target_gap = rq.get("gap_id", "")
+                q_text = rq.get("question", "")
+                rat = rq.get("rationale", "")
+                print(f"[{qid}] (Addresses: {target_gap})")
+                print(f"  Question: {q_text}")
+                if rat:
+                    print(f"  Rationale: {rat}")
+                print()
+
+        # 4. Citations
+        citations = result.get("citations", [])
+        if citations:
+            print(f"{'='*70}")
+            print(f"GROUNDED CITATIONS & PROVENANCE ({len(citations)} citations):")
+            print(f"{'='*70}")
+            for cit in citations:
+                c_idx = cit.get("citation_index", 1)
+                c_claim = cit.get("claim", "")
+                c_status = cit.get("claim_status", "supported").upper()
+                doc = cit.get("document_name", "Unknown Document")
+                page = cit.get("page_number", 1)
+                sec = cit.get("section") or "General"
+                cid = cit.get("chunk_id", "chunk_unknown")
+                rerank_sc = cit.get("reranker_score")
+                score_info = (
+                    f"Rerank Score: {rerank_sc:.4f}"
+                    if rerank_sc is not None
+                    else f"Score: {cit.get('confidence_score', 1.0):.4f}"
+                )
+                ev_snippet = cit.get("evidence_text", "")
+
+                status_sym = "(+)" if c_status == "SUPPORTED" else ("(~)" if c_status == "PARTIALLY_SUPPORTED" else "(-)")
+                print(f"[{c_idx}] {status_sym} [{c_status}] Claim: \"{c_claim}\"")
+                print(f"    Source: [Document: {doc} | Page: {page} | Section: {sec} | Chunk: {cid} | {score_info}]")
+                if ev_snippet:
+                    print(f"    Evidence: \"{ev_snippet}\"")
+                print()
+
+        # Missing evidence
+        missing = result.get("missing_evidence", [])
+        if missing:
+            print(f"{'='*70}")
+            print(f"MISSING EVIDENCE ({len(missing)} areas lacking evidence - 0 fake citations):")
+            print(f"{'='*70}")
+            for item in missing:
+                print(f"  (?) {item.get('document')} - {item.get('dimension')}: \"Insufficient evidence.\"")
+            print()
+
+    except Exception as e:
+        logger.error(f"Error during research intelligence analysis: {str(e)}", exc_info=True)
+        sys.exit(1)
+
+
 def cmd_extract_tables(args):
     """Extract tables command handler.
 
@@ -557,6 +708,38 @@ Examples:
         help="LLM sampling temperature (default: 0.2)",
     )
     compare_parser.set_defaults(func=cmd_compare)
+
+    # Research Intelligence command (Step 8)
+    research_parser = subparsers.add_parser(
+        "research", help="Perform literature review and research gap discovery across 2+ papers"
+    )
+    research_parser.add_argument(
+        "--docs",
+        "-d",
+        nargs="+",
+        required=True,
+        help="List of 2 or more PDF filenames or document IDs to analyze",
+    )
+    research_parser.add_argument(
+        "--topic",
+        "-t",
+        type=str,
+        default=None,
+        help="Optional specific research topic or focus area",
+    )
+    research_parser.add_argument(
+        "--top-k",
+        type=int,
+        default=4,
+        help="Number of chunks to retrieve per paper (default: 4)",
+    )
+    research_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.2,
+        help="LLM sampling temperature (default: 0.2)",
+    )
+    research_parser.set_defaults(func=cmd_research)
 
     # Status command
     status_parser = subparsers.add_parser(

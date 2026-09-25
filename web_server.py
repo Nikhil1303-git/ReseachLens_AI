@@ -146,6 +146,32 @@ def compare():
         return jsonify({"error": str(error)}), 500
 
 
+@app.post("/api/research/analyze")
+def research_analyze():
+    """Analyze 2 or more research papers for literature review & gaps (Step 8)."""
+    payload = request.get_json(silent=True) or {}
+    docs = payload.get("documents") or []
+    if not isinstance(docs, list) or len(docs) < 2:
+        return jsonify({"error": "Please select at least 2 documents to analyze."}), 400
+
+    topic = str(payload.get("topic", "")).strip() or None
+    top_k = max(1, min(int(payload.get("top_k", 4)), 10))
+    temperature = float(payload.get("temperature", 0.2))
+
+    try:
+        pipeline, _ = get_pipeline()
+        result = pipeline.analyze_research(
+            documents=docs,
+            focus_topic=topic,
+            n_chunks_per_doc=top_k,
+            temperature=temperature,
+        )
+        return jsonify(result)
+    except Exception as error:
+        logger.exception("Research intelligence analysis failed")
+        return jsonify({"error": str(error)}), 500
+
+
 @app.post("/api/quiz/generate")
 def quiz_generate():
     payload = request.get_json(silent=True) or {}
