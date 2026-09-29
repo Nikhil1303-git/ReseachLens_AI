@@ -214,5 +214,46 @@ def quiz_evaluate():
         return jsonify({"error": str(error)}), 500
 
 
+_dashboard_service = None
+
+
+def get_dashboard_service():
+    """Lazily initialize the DashboardService singleton."""
+    global _dashboard_service
+    if _dashboard_service is None:
+        from app.evaluation.dashboard_service import DashboardService
+        pipeline, _ = get_pipeline()
+        _dashboard_service = DashboardService(pipeline=pipeline)
+    return _dashboard_service
+
+
+@app.get("/api/evaluation/dashboard")
+def evaluation_dashboard():
+    """Retrieve full evaluation metrics, comparisons, and parameter sweep results (Step 9)."""
+    try:
+        service = get_dashboard_service()
+        data = service.get_dashboard_payload()
+        return jsonify(data)
+    except Exception as error:
+        logger.exception("Failed to load evaluation dashboard data")
+        return jsonify({"error": str(error)}), 500
+
+
+@app.post("/api/evaluation/run_experiment")
+def evaluation_run_experiment():
+    """Execute live research experiments on demand (Step 9)."""
+    payload = request.get_json(silent=True) or {}
+    experiment_type = str(payload.get("experiment", "all")).strip()
+
+    try:
+        service = get_dashboard_service()
+        result = service.run_live_experiment(experiment_type=experiment_type)
+        return jsonify(result)
+    except Exception as error:
+        logger.exception("Failed to run evaluation experiment")
+        return jsonify({"error": str(error)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
+

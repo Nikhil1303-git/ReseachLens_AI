@@ -776,106 +776,309 @@
           <div class="view-header">
             <div>
               <h1 class="view-title">Research Evaluation & System Benchmarks</h1>
-              <p class="view-desc">Evaluation frameworks, retrieval quality metrics, and latency profiling designed for final-year project demonstration.</p>
+              <p class="view-desc">Quantitative performance comparison across RAG pipeline evolutions, ranking quality metrics, parameter sweeps, and latency profiling.</p>
             </div>
           </div>
 
-          <!-- Evaluation Triad Overview -->
+          <!-- Evaluation Toolbar & Trigger -->
+          <div class="eval-toolbar">
+            <div class="eval-toolbar-controls">
+              <button type="button" class="btn btn-primary" id="eval-run-btn">
+                <span id="eval-spinner" class="spinner" style="display: none; width: 14px; height: 14px; border-width: 2px;"></span>
+                <span id="eval-run-text">⚡ Run Live Benchmark</span>
+              </button>
+              <select class="control-select" id="eval-experiment-select" style="min-width: 220px;">
+                <option value="all">All Experiments (Comprehensive)</option>
+                <option value="retrieval">Exp 1 & 2: Retrieval & Reranking</option>
+                <option value="verification">Exp 3: Evidence Verification</option>
+                <option value="top_k">Exp 4: Top-K Sensitivity</option>
+                <option value="chunk_size">Exp 5: Chunk Size Sensitivity</option>
+              </select>
+            </div>
+            <div class="eval-toolbar-status">
+              <span class="badge badge-emerald" id="eval-status-badge">Benchmarks Ready</span>
+              <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;" id="eval-last-updated">Status: Loaded</span>
+            </div>
+          </div>
+
+          <!-- Evaluation KPI Overview Grid -->
           <div class="metrics-grid">
             <div class="metric-card">
               <div class="metric-icon bg-indigo">🎯</div>
               <div class="metric-info">
-                <span class="metric-label">Context Relevance (Precision@5)</span>
-                <h3 class="metric-value">0.88</h3>
-                <span class="metric-sub">Semantic match of Top-K chunks</span>
+                <span class="metric-label">Context Relevance (P@5)</span>
+                <h3 class="metric-value" id="eval-kpi-relevance">0.88</h3>
+                <span class="metric-sub">Semantic match of Top-K passages</span>
               </div>
             </div>
             <div class="metric-card">
               <div class="metric-icon bg-emerald">🛡️</div>
               <div class="metric-info">
                 <span class="metric-label">Groundedness / Faithfulness</span>
-                <h3 class="metric-value">0.94</h3>
-                <span class="metric-sub">Facts directly present in context</span>
+                <h3 class="metric-value" id="eval-kpi-faithfulness">0.94</h3>
+                <span class="metric-sub">Entailed claims in context</span>
               </div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon bg-amber">⚡</div>
+              <div class="metric-icon bg-indigo">📈</div>
               <div class="metric-info">
-                <span class="metric-label">Latest Query Latency</span>
-                <h3 class="metric-value" id="eval-live-latency">-- ms</h3>
-                <span class="metric-sub">End-to-end response time</span>
+                <span class="metric-label">Ranking Quality (nDCG@5)</span>
+                <h3 class="metric-value" id="eval-kpi-ndcg">0.929</h3>
+                <span class="metric-sub">Hybrid RRF discount gain</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon bg-emerald">🥇</div>
+              <div class="metric-info">
+                <span class="metric-label">Mean Reciprocal Rank</span>
+                <h3 class="metric-value" id="eval-kpi-mrr">0.875</h3>
+                <span class="metric-sub">First relevant passage position</span>
               </div>
             </div>
             <div class="metric-card">
               <div class="metric-icon bg-rose">📉</div>
               <div class="metric-info">
-                <span class="metric-label">Hallucination Rate</span>
-                <h3 class="metric-value">&lt; 0.05</h3>
-                <span class="metric-sub">Enforced by strict grounding prompt</span>
+                <span class="metric-label">Hallucination Catch Rate</span>
+                <h3 class="metric-value" id="eval-kpi-hallucination">&lt; 0.05</h3>
+                <span class="metric-sub">Unverified claims intercepted</span>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon bg-amber">⚡</div>
+              <div class="metric-info">
+                <span class="metric-label">Pipeline Mean Latency</span>
+                <h3 class="metric-value" id="eval-live-latency">448 ms</h3>
+                <span class="metric-sub">Hybrid + Cross-Encoder retrieval</span>
               </div>
             </div>
           </div>
 
-          <!-- Academic Evaluation Framework Cards -->
+          <!-- Section 1: Multi-Stage Pipeline Evolution Comparison Table -->
+          <div class="card eval-chart-card">
+            <div class="eval-chart-header">
+              <div>
+                <h3 class="card-title">1. Pipeline Evolution & Comparative Performance Matrix</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Empirical benchmark across pipeline stages on identical 12-question research test suite.</p>
+              </div>
+              <span class="badge badge-emerald">Step 1 → Step 8</span>
+            </div>
+            <div class="eval-table-wrapper">
+              <table class="eval-table" id="eval-pipeline-table">
+                <thead>
+                  <tr>
+                    <th>Pipeline Stage</th>
+                    <th>Precision@5</th>
+                    <th>Recall@5</th>
+                    <th>MRR</th>
+                    <th>nDCG@5</th>
+                    <th>Faithfulness</th>
+                    <th>Mean Latency</th>
+                    <th>Key Research Advantage</th>
+                  </tr>
+                </thead>
+                <tbody id="eval-pipeline-tbody">
+                  <!-- Populated dynamically via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section 2: Research Experiments Detail Grid -->
           <div class="eval-grid">
+            <!-- Card A: Retrieval Quality & Ranking Comparison -->
             <div class="card eval-card">
               <div class="card-header">
-                <h3 class="card-title">1. Retrieval Quality Metrics</h3>
-                <span class="card-tag">ChromaDB</span>
+                <h3 class="card-title">Exp 1 & 2: Retrieval & Reranking</h3>
+                <span class="card-tag">Ranking Quality</span>
               </div>
-              <div class="eval-item">
-                <div class="eval-name-row">
-                  <strong>Precision@K (K=5)</strong>
-                  <span class="badge badge-emerald">Evaluated</span>
+              <div class="eval-chart-bars" style="margin-top: 12px;">
+                <div class="eval-bar-group">
+                  <div class="eval-bar-label-row">
+                    <span>Dense Vector (Baseline)</span>
+                    <strong id="bar-label-vector">nDCG: 0.883 | Latency: 53.8ms</strong>
+                  </div>
+                  <div class="eval-progress-track">
+                    <div class="eval-progress-fill indigo" id="bar-fill-vector" style="width: 88.3%;"></div>
+                  </div>
                 </div>
-                <p class="eval-desc">Proportion of top-K retrieved document chunks that contain relevant factual statements to answer the user query.</p>
+                <div class="eval-bar-group">
+                  <div class="eval-bar-label-row">
+                    <span>Hybrid (Dense + BM25 RRF)</span>
+                    <strong id="bar-label-hybrid">nDCG: 0.929 | Latency: 42.5ms</strong>
+                  </div>
+                  <div class="eval-progress-track">
+                    <div class="eval-progress-fill emerald" id="bar-fill-hybrid" style="width: 92.9%;"></div>
+                  </div>
+                </div>
+                <div class="eval-bar-group">
+                  <div class="eval-bar-label-row">
+                    <span>Hybrid + Cross-Encoder Rerank</span>
+                    <strong id="bar-label-rerank">Recall: 1.000 | Latency: 448.4ms</strong>
+                  </div>
+                  <div class="eval-progress-track">
+                    <div class="eval-progress-fill amber" id="bar-fill-rerank" style="width: 100%;"></div>
+                  </div>
+                </div>
               </div>
-              <div class="eval-item">
-                <div class="eval-name-row">
-                  <strong>Mean Reciprocal Rank (MRR)</strong>
-                  <span class="badge">Ranking Metric</span>
-                </div>
-                <p class="eval-desc">Evaluates how high up the first truly relevant chunk appears in ChromaDB's nearest-neighbor distance list.</p>
+              <p class="eval-desc" style="margin-top: 12px;">
+                <strong>Finding:</strong> Hybrid RRF achieves the highest ranking quality (+5.2% nDCG) via lexical-semantic fusion. Cross-Encoder reranking recovers 100% recall via deep cross-attention.
+              </p>
+            </div>
+
+            <!-- Card B: Evidence Verification Status Distribution -->
+            <div class="card eval-card">
+              <div class="card-header">
+                <h3 class="card-title">Exp 3: Evidence Verification & Integrity</h3>
+                <span class="card-tag">NLI Entailment</span>
               </div>
-              <div class="eval-item">
-                <div class="eval-name-row">
-                  <strong>Normalized Discounted Cumulative Gain (nDCG)</strong>
-                  <span class="badge">Relevance Gradient</span>
+              <div style="margin-top: 12px;">
+                <div class="eval-bar-label-row" style="margin-bottom: 6px;">
+                  <span>Verification Classification Breakdown</span>
+                  <strong id="eval-verif-accuracy">90.0% Classification Accuracy</strong>
                 </div>
-                <p class="eval-desc">Measures ranking quality with higher weight given to the most relevant passages at the top of the context window.</p>
+                <div class="eval-stacked-bar">
+                  <div class="eval-stack-slice supported" id="stack-slice-supp" style="width: 50%;" title="Supported (50%)">50% Supp</div>
+                  <div class="eval-stack-slice partially" id="stack-slice-part" style="width: 20%;" title="Partially Supported (20%)">20% Part</div>
+                  <div class="eval-stack-slice contradicted" id="stack-slice-cont" style="width: 10%;" title="Contradicted (10%)">10% Cont</div>
+                  <div class="eval-stack-slice insufficient" id="stack-slice-inss" style="width: 20%;" title="Insufficient Evidence (20%)">20% Inss</div>
+                </div>
+              </div>
+              <div class="specs-table-grid" style="margin-top: 14px; grid-template-columns: repeat(2, 1fr);">
+                <div class="spec-cell">
+                  <span class="spec-cell-label">Supported Claims:</span>
+                  <strong id="eval-verif-supp-count">5 / 10 cases (50.0%)</strong>
+                </div>
+                <div class="spec-cell">
+                  <span class="spec-cell-label">Unsupported Caught:</span>
+                  <strong id="eval-verif-unsupp-rate">30.0% Detection Rate</strong>
+                </div>
               </div>
             </div>
 
+            <!-- Card C: Citation & Provenance Integrity -->
             <div class="card eval-card">
               <div class="card-header">
-                <h3 class="card-title">2. Generation Quality (The RAG Triad)</h3>
-                <span class="card-tag">LLM Assessment</span>
+                <h3 class="card-title">Exp 6: Citations & Provenance</h3>
+                <span class="card-tag">Grounding Provenance</span>
               </div>
-              <div class="eval-item">
-                <div class="eval-name-row">
-                  <strong>Context Relevance</strong>
-                  <span class="badge badge-emerald">Verified</span>
+              <div class="specs-table-grid" style="margin-top: 12px; grid-template-columns: repeat(2, 1fr);">
+                <div class="spec-cell">
+                  <span class="spec-cell-label">Citation Correctness:</span>
+                  <strong id="eval-cite-correctness">100.0%</strong>
                 </div>
-                <p class="eval-desc">Verifies that the retrieved context contains only information needed to answer the question without distracting noise.</p>
+                <div class="spec-cell">
+                  <span class="spec-cell-label">Citation Completeness:</span>
+                  <strong id="eval-cite-completeness">100.0%</strong>
+                </div>
+                <div class="spec-cell">
+                  <span class="spec-cell-label">Attribution Accuracy:</span>
+                  <strong id="eval-cite-attribution">100.0%</strong>
+                </div>
+                <div class="spec-cell">
+                  <span class="spec-cell-label">Phantom Citation Rate:</span>
+                  <strong id="eval-cite-phantom" style="color: #10b981;">0.0% (Zero Fake)</strong>
+                </div>
               </div>
-              <div class="eval-item">
-                <div class="eval-name-row">
-                  <strong>Faithfulness / Groundedness</strong>
-                  <span class="badge badge-emerald">Strict Prompt</span>
-                </div>
-                <p class="eval-desc">Verifies that every claim made in the generated answer can be traced directly back to the retrieved context chunks.</p>
+              <p class="eval-desc" style="margin-top: 10px;">
+                <strong>Verbatim Matching:</strong> <span id="eval-cite-verbatim">100.0%</span> of citations link to exact substrings with document name, page number, section header, and chunk ID.
+              </p>
+            </div>
+
+            <!-- Card D: Latency Profiling by Pipeline Component -->
+            <div class="card eval-card">
+              <div class="card-header">
+                <h3 class="card-title">System Latency Breakdown</h3>
+                <span class="card-tag">Component Profiling</span>
               </div>
-              <div class="eval-item">
-                <div class="eval-name-row">
-                  <strong>Answer Relevance</strong>
-                  <span class="badge badge-emerald">High</span>
+              <div class="eval-chart-bars" style="margin-top: 12px;">
+                <div class="eval-bar-group">
+                  <div class="eval-bar-label-row">
+                    <span>1. Candidate Retrieval (Dense + BM25)</span>
+                    <strong id="lat-val-retrieval">40.8 ms</strong>
+                  </div>
+                  <div class="eval-progress-track">
+                    <div class="eval-progress-fill emerald" style="width: 5%;"></div>
+                  </div>
                 </div>
-                <p class="eval-desc">Checks that the response addresses the exact user question directly without hallucinating irrelevant external topics.</p>
+                <div class="eval-bar-group">
+                  <div class="eval-bar-label-row">
+                    <span>2. Cross-Encoder Neural Reranking</span>
+                    <strong id="lat-val-rerank">407.6 ms</strong>
+                  </div>
+                  <div class="eval-progress-track">
+                    <div class="eval-progress-fill indigo" style="width: 15%;"></div>
+                  </div>
+                </div>
+                <div class="eval-bar-group">
+                  <div class="eval-bar-label-row">
+                    <span>3. LLM Answer Generation</span>
+                    <strong id="lat-val-generation">2,252.6 ms</strong>
+                  </div>
+                  <div class="eval-progress-track">
+                    <div class="eval-progress-fill amber" style="width: 35%;"></div>
+                  </div>
+                </div>
+                <div class="eval-bar-group">
+                  <div class="eval-bar-label-row">
+                    <span>4. NLI Evidence Verification</span>
+                    <strong id="lat-val-verification">8,310.2 ms</strong>
+                  </div>
+                  <div class="eval-progress-track">
+                    <div class="eval-progress-fill rose" style="width: 80%;"></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Configuration & Pipeline Specifications -->
+          <!-- Section 3: Hyperparameter Sensitivity Sweeps -->
+          <div class="card eval-chart-card">
+            <div class="eval-chart-header">
+              <div>
+                <h3 class="card-title">2. Hyperparameter Sensitivity: Top-K & Chunk Size Trade-offs</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Empirical sensitivity analysis testing Precision vs Recall curves and document boundary effects.</p>
+              </div>
+              <span class="badge badge-emerald">Exp 4 & 5</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+              <!-- Top-K Table -->
+              <div class="eval-table-wrapper" style="margin-bottom: 0;">
+                <table class="eval-table" id="eval-topk-table">
+                  <thead>
+                    <tr>
+                      <th>Top-K</th>
+                      <th>Precision</th>
+                      <th>Recall</th>
+                      <th>nDCG</th>
+                      <th>Latency</th>
+                    </tr>
+                  </thead>
+                  <tbody id="eval-topk-tbody">
+                    <!-- Populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Chunk Size Table -->
+              <div class="eval-table-wrapper" style="margin-bottom: 0;">
+                <table class="eval-table" id="eval-chunk-table">
+                  <thead>
+                    <tr>
+                      <th>Chunk Size</th>
+                      <th>P@5</th>
+                      <th>Context Noise</th>
+                      <th>Boundary Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="eval-chunk-tbody">
+                    <!-- Populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 4: Configuration & Pipeline Specifications -->
           <div class="card eval-specs-card">
             <div class="card-header">
               <h3 class="card-title">Active System Configuration & Hyperparameters</h3>

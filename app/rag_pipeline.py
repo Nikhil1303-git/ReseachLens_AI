@@ -1013,5 +1013,23 @@ Respond with ONLY valid JSON, no other text, in exactly this format:
 
         status["comparator"] = {"enabled": self.comparator is not None}
         status["intelligence"] = {"enabled": self.research_intelligence is not None}
+        status["evaluation_dashboard"] = {"enabled": True}
 
         return status
+
+    def get_evaluation_dashboard(self) -> Dict[str, Any]:
+        """Retrieve aggregated empirical metrics and experiment benchmarks (Step 9)."""
+        from app.evaluation.dashboard_service import DashboardService
+
+        if not hasattr(self, "_dashboard_service") or self._dashboard_service is None:
+            self._dashboard_service = DashboardService(pipeline=self)
+        return self._dashboard_service.get_dashboard_payload()
+
+    def run_evaluation_experiment(self, experiment_type: str = "all") -> Dict[str, Any]:
+        """Execute a live research benchmark experiment on demand (Step 9)."""
+        from app.evaluation.dashboard_service import DashboardService
+
+        if not hasattr(self, "_dashboard_service") or self._dashboard_service is None:
+            self._dashboard_service = DashboardService(pipeline=self)
+        return self._dashboard_service.run_live_experiment(experiment_type=experiment_type)
+
