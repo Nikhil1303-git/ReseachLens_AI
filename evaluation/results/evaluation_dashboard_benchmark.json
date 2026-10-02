@@ -1,0 +1,199 @@
+{
+  "status": "success",
+  "kpis": {
+    "context_relevance": 0.88,
+    "faithfulness": 0.94,
+    "mrr": 0.875,
+    "ndcg_at_5": 0.929,
+    "hallucination_rate": 0.06,
+    "citation_accuracy": 0.9,
+    "mean_retrieval_latency_ms": 448.4,
+    "mean_total_latency_ms": 11063.5
+  },
+  "pipeline_comparison": [
+    {
+      "stage_key": "baseline_vector",
+      "stage": "Vector-Only (Baseline)",
+      "mode": "Semantic Dense Vector (ChromaDB)",
+      "precision_at_5": 0.7,
+      "recall_at_5": 1.0,
+      "mrr": 0.875,
+      "ndcg_at_5": 0.8829,
+      "faithfulness": 0.82,
+      "latency_ms": 53.78,
+      "advantage": "Fastest baseline semantic matching."
+    },
+    {
+      "stage_key": "hybrid_retrieval",
+      "stage": "Hybrid Retrieval (Dense + BM25 RRF)",
+      "mode": "Dense Vector + BM25Okapi (k=60)",
+      "precision_at_5": 0.7,
+      "recall_at_5": 0.9167,
+      "mrr": 0.875,
+      "ndcg_at_5": 0.9289,
+      "faithfulness": 0.85,
+      "latency_ms": 42.49,
+      "advantage": "Superior ranking separation (+5.2% nDCG) and lexical grounding."
+    },
+    {
+      "stage_key": "neural_reranking",
+      "stage": "Hybrid + Cross-Encoder Rerank",
+      "mode": "ms-marco-MiniLM-L-6-v2 Reranker",
+      "precision_at_5": 0.7,
+      "recall_at_5": 1.0,
+      "mrr": 0.875,
+      "ndcg_at_5": 0.8818,
+      "faithfulness": 0.89,
+      "latency_ms": 448.4,
+      "advantage": "100% recall recovery via deep cross-attention passage scoring."
+    },
+    {
+      "stage_key": "evidence_verification",
+      "stage": "Hybrid + Rerank + Verification",
+      "mode": "Full Pipeline + NLI Verifier + Citations",
+      "precision_at_5": 0.7,
+      "recall_at_5": 1.0,
+      "mrr": 0.875,
+      "ndcg_at_5": 0.8818,
+      "faithfulness": 0.94,
+      "latency_ms": 11063.51,
+      "advantage": "Post-generation verification isolating ungrounded claims with 0 fake citations."
+    }
+  ],
+  "retrieval_comparison": {
+    "vector_only": {
+      "name": "Vector-Only (Baseline)",
+      "precision_at_k": 0.7,
+      "recall_at_k": 1.0,
+      "mrr": 0.875,
+      "ndcg_at_k": 0.8829,
+      "avg_retrieval_latency_ms": 53.77,
+      "avg_rerank_latency_ms": 0.0,
+      "avg_total_latency_ms": 53.78
+    },
+    "hybrid_rrf": {
+      "name": "Hybrid Retrieval (Dense + BM25 RRF)",
+      "precision_at_k": 0.7,
+      "recall_at_k": 0.9167,
+      "mrr": 0.875,
+      "ndcg_at_k": 0.9289,
+      "avg_retrieval_latency_ms": 42.48,
+      "avg_rerank_latency_ms": 0.0,
+      "avg_total_latency_ms": 42.49
+    },
+    "hybrid_rerank": {
+      "name": "Hybrid + Cross-Encoder Rerank",
+      "precision_at_k": 0.7,
+      "recall_at_k": 1.0,
+      "mrr": 0.875,
+      "ndcg_at_k": 0.8818,
+      "avg_retrieval_latency_ms": 40.83,
+      "avg_rerank_latency_ms": 407.56,
+      "avg_total_latency_ms": 448.4
+    }
+  },
+  "verification_stats": {
+    "total_cases": 10,
+    "accuracy_pct": 90.0,
+    "supported_count": 5,
+    "partially_supported_count": 2,
+    "contradicted_count": 1,
+    "insufficient_evidence_count": 2,
+    "supported_pct": 50.0,
+    "partially_supported_pct": 20.0,
+    "contradicted_pct": 10.0,
+    "insufficient_evidence_pct": 20.0,
+    "unsupported_answer_rate_pct": 40.0,
+    "latency_profile_ms": {
+      "mean_retrieval_ms": 500.71,
+      "mean_generation_ms": 2252.62,
+      "mean_verification_ms": 8310.19,
+      "mean_total_step4_ms": 2753.33,
+      "mean_total_step5_ms": 11063.51
+    }
+  },
+  "citation_stats": {
+    "total_cases": 10,
+    "citation_correctness_pct": 90.0,
+    "citation_completeness_pct": 100.0,
+    "attribution_accuracy_pct": 100.0,
+    "verbatim_evidence_match_pct": 100.0,
+    "phantom_citation_rate_pct": 0.0,
+    "avg_citation_latency_ms": 0.86
+  },
+  "top_k_sensitivity": [
+    {
+      "k": 1,
+      "precision": 1.0,
+      "recall": 0.5,
+      "ndcg": 1.0,
+      "avg_latency_ms": 40.8
+    },
+    {
+      "k": 3,
+      "precision": 0.85,
+      "recall": 0.85,
+      "ndcg": 0.94,
+      "avg_latency_ms": 46.4
+    },
+    {
+      "k": 5,
+      "precision": 0.7,
+      "recall": 1.0,
+      "ndcg": 0.929,
+      "avg_latency_ms": 52.0
+    },
+    {
+      "k": 8,
+      "precision": 0.52,
+      "recall": 1.0,
+      "ndcg": 0.88,
+      "avg_latency_ms": 60.4
+    },
+    {
+      "k": 10,
+      "precision": 0.35,
+      "recall": 1.0,
+      "ndcg": 0.85,
+      "avg_latency_ms": 66.0
+    }
+  ],
+  "chunk_size_sensitivity": [
+    {
+      "chunk_size": 250,
+      "chunk_overlap": 0,
+      "precision_at_5": 0.75,
+      "context_noise": "Low",
+      "boundary_fragmentation": "High",
+      "avg_latency_ms": 42.1,
+      "recommendation": "Useful for isolated factual lookups, but risks splitting multi-sentence arguments."
+    },
+    {
+      "chunk_size": 500,
+      "chunk_overlap": 0,
+      "precision_at_5": 0.7,
+      "context_noise": "Low",
+      "boundary_fragmentation": "Optimal",
+      "avg_latency_ms": 53.8,
+      "recommendation": "Optimal balance for academic papers and technical specs; preserves complete paragraphs."
+    },
+    {
+      "chunk_size": 1000,
+      "chunk_overlap": 100,
+      "precision_at_5": 0.52,
+      "context_noise": "Medium",
+      "boundary_fragmentation": "Low",
+      "avg_latency_ms": 78.4,
+      "recommendation": "Captures broad context but dilutes precision with extraneous surrounding text."
+    }
+  ],
+  "latency_breakdown": {
+    "retrieval_ms": 40.8,
+    "rerank_ms": 407.6,
+    "generation_ms": 2252.6,
+    "verification_ms": 8310.2,
+    "total_ms": 11063.5
+  },
+  "timestamp": "2026-09-29T07:58:09.313671+00:00",
+  "benchmark_suite": "Step 9 Evaluation Dashboard & Research Experiments"
+}

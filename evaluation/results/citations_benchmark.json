@@ -1,0 +1,102 @@
+{
+  "timestamp": "2026-09-25T17:37:16.488185",
+  "benchmark_task": "Claim-to-Evidence Grounded Citations & Provenance",
+  "total_cases_evaluated": 10,
+  "metrics": {
+    "citation_correctness_pct": 90.0,
+    "phantom_citations_count": 0,
+    "average_citation_latency_ms": 0.25
+  },
+  "case_results": [
+    {
+      "case_id": "case_01",
+      "category": "supported",
+      "expected_citations": 2,
+      "emitted_citations": 2,
+      "unsupported_claims": 0,
+      "latency_ms": 0.38,
+      "correct": true
+    },
+    {
+      "case_id": "case_02",
+      "category": "supported",
+      "expected_citations": 2,
+      "emitted_citations": 2,
+      "unsupported_claims": 0,
+      "latency_ms": 0.4,
+      "correct": true
+    },
+    {
+      "case_id": "case_03",
+      "category": "partially_supported",
+      "expected_citations": 2,
+      "emitted_citations": 1,
+      "unsupported_claims": 1,
+      "latency_ms": 0.4,
+      "correct": false
+    },
+    {
+      "case_id": "case_04",
+      "category": "contradicted",
+      "expected_citations": 1,
+      "emitted_citations": 1,
+      "unsupported_claims": 0,
+      "latency_ms": 0.15,
+      "correct": true
+    },
+    {
+      "case_id": "case_05",
+      "category": "insufficient_evidence",
+      "expected_citations": 0,
+      "emitted_citations": 0,
+      "unsupported_claims": 1,
+      "latency_ms": 0.07,
+      "correct": true
+    },
+    {
+      "case_id": "case_06",
+      "category": "mixed",
+      "expected_citations": 1,
+      "emitted_citations": 1,
+      "unsupported_claims": 1,
+      "latency_ms": 0.34,
+      "correct": true
+    },
+    {
+      "case_id": "case_07",
+      "category": "supported",
+      "expected_citations": 2,
+      "emitted_citations": 2,
+      "unsupported_claims": 0,
+      "latency_ms": 0.3,
+      "correct": true
+    },
+    {
+      "case_id": "case_08",
+      "category": "insufficient_evidence",
+      "expected_citations": 0,
+      "emitted_citations": 0,
+      "unsupported_claims": 1,
+      "latency_ms": 0.07,
+      "correct": true
+    },
+    {
+      "case_id": "case_09",
+      "category": "contradicted",
+      "expected_citations": 1,
+      "emitted_citations": 1,
+      "unsupported_claims": 0,
+      "latency_ms": 0.08,
+      "correct": true
+    },
+    {
+      "case_id": "case_10",
+      "category": "partially_supported",
+      "expected_citations": 2,
+      "emitted_citations": 2,
+      "unsupported_claims": 0,
+      "latency_ms": 0.35,
+      "correct": true
+    }
+  ]
+}

@@ -1,14 +1,17 @@
-"""RAG pipeline orchestrating the complete workflow."""
+"""RAG pipeline orchestrating the complete workflow with Hybrid Retrieval and Neural Reranking."""
 
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+import copy
+import hashlib
 import logging
+from pathlib import Path
+import time
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class RAGPipeline:
-    """Complete Retrieval Augmented Generation pipeline."""
+    """Complete Retrieval Augmented Generation pipeline with Hybrid Retrieval & Neural Reranking."""
 
     def __init__(
         self,
@@ -16,6 +19,13 @@ class RAGPipeline:
         text_chunker,
         vector_store,
         llm_client,
+        hybrid_retriever=None,
+        reranker=None,
+        verifier=None,
+        citation_engine=None,
+        comparator=None,
+        research_intelligence=None,
+        config=None,
     ):
         """Initialize RAG pipeline.
 
@@ -24,12 +34,175 @@ class RAGPipeline:
             text_chunker: TextChunker instance
             vector_store: ChromaVectorStore instance
             llm_client: LLMClient instance
+            hybrid_retriever: Optional HybridRetriever instance
+            reranker: Optional CrossEncoderReranker instance
+            verifier: Optional EvidenceVerifier instance
+            citation_engine: Optional CitationEngine instance
+            comparator: Optional DocumentComparator instance
+            research_intelligence: Optional ResearchIntelligenceEngine instance
+            config: Optional AppConfig instance
         """
         self.pdf_extractor = pdf_extractor
         self.text_chunker = text_chunker
         self.vector_store = vector_store
         self.llm_client = llm_client
-        logger.info("Initialized RAGPipeline")
+        self.config = config
+
+        # Initialize or wire hybrid retriever
+        if hybrid_retriever is not None:
+            self.hybrid_retriever = hybrid_retriever
+        elif config is not None:
+            try:
+                from app.retrieval import BM25Retriever, HybridRetriever
+
+                persist_dir = "./data/bm25"
+                if hasattr(config, "hybrid") and config.hybrid:
+                    persist_dir = config.hybrid.bm25_persist_dir
+                    dense_w = config.hybrid.dense_weight
+                    bm25_w = config.hybrid.bm25_weight
+                    fusion = config.hybrid.fusion_method
+                    rrf_k = config.hybrid.rrf_k
+                    dense_top_k = config.hybrid.dense_top_k
+                    bm25_top_k = config.hybrid.bm25_top_k
+                    final_top_k = config.hybrid.final_top_k
+                else:
+                    dense_w = 0.5
+                    bm25_w = 0.5
+                    fusion = "weighted"
+                    rrf_k = 60
+                    dense_top_k = 20
+                    bm25_top_k = 20
+                    final_top_k = 5
+
+                bm25_file = Path(persist_dir) / "bm25_index.json"
+                bm25 = BM25Retriever(persist_path=bm25_file)
+                bm25.load()
+
+                self.hybrid_retriever = HybridRetriever(
+                    vector_store=self.vector_store,
+                    bm25_retriever=bm25,
+                    dense_top_k=dense_top_k,
+                    bm25_top_k=bm25_top_k,
+                    final_top_k=final_top_k,
+                    dense_weight=dense_w,
+                    bm25_weight=bm25_w,
+                    fusion_method=fusion,
+                    rrf_k=rrf_k,
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize HybridRetriever: {e}")
+                self.hybrid_retriever = None
+        else:
+            try:
+                from app.retrieval import BM25Retriever, HybridRetriever
+
+                # In-memory BM25 without loading from disk, preserving mock test isolation
+                bm25 = BM25Retriever()
+                self.hybrid_retriever = HybridRetriever(
+                    vector_store=self.vector_store,
+                    bm25_retriever=bm25,
+                )
+            except Exception as e:
+                logger.warning(f"Could not initialize default HybridRetriever: {e}")
+                self.hybrid_retriever = None
+
+        # Initialize or wire CrossEncoder reranker
+        if reranker is not None:
+            self.reranker = reranker
+        elif config is not None and getattr(config, "rerank", None) and config.rerank.enabled:
+            try:
+                from app.reranking import CrossEncoderReranker
+
+                self.reranker = CrossEncoderReranker(
+                    model_name=config.rerank.model_name,
+                    batch_size=config.rerank.batch_size,
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize CrossEncoderReranker: {e}")
+                self.reranker = None
+        else:
+            self.reranker = None
+
+        # Initialize or wire EvidenceVerifier
+
+        if verifier is not None:
+            self.verifier = verifier
+        elif config is not None and getattr(config, "verification", None) and config.verification.enabled:
+            try:
+                from app.verification import EvidenceVerifier
+
+                self.verifier = EvidenceVerifier(
+                    llm_client=self.llm_client,
+                    config=self.config,
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize EvidenceVerifier: {e}")
+                self.verifier = None
+        else:
+            self.verifier = None
+
+        # Initialize or wire CitationEngine (Step 6)
+        if citation_engine is not None:
+            self.citation_engine = citation_engine
+        else:
+            try:
+                from app.citations import CitationEngine
+
+                self.citation_engine = CitationEngine(config=self.config)
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize CitationEngine: {e}")
+                self.citation_engine = None
+
+        # Initialize or wire DocumentComparator (Step 7)
+        if comparator is not None:
+            self.comparator = comparator
+        else:
+            try:
+                from app.comparison import DocumentComparator
+
+                self.comparator = DocumentComparator(
+                    pipeline=self,
+                    llm_client=self.llm_client,
+                    verifier=self.verifier,
+                    citation_engine=self.citation_engine,
+                    config=self.config,
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize DocumentComparator: {e}")
+                self.comparator = None
+
+        # Initialize or wire ResearchIntelligenceEngine (Step 8)
+        if research_intelligence is not None:
+            self.research_intelligence = research_intelligence
+        else:
+            try:
+                from app.intelligence import ResearchIntelligenceEngine
+
+                self.research_intelligence = ResearchIntelligenceEngine(
+                    pipeline=self,
+                    llm_client=self.llm_client,
+                    verifier=self.verifier,
+                    citation_engine=self.citation_engine,
+                    config=self.config,
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-initialize ResearchIntelligenceEngine: {e}")
+                self.research_intelligence = None
+
+        if config and hasattr(config, "hybrid") and config.hybrid:
+            self.retrieval_mode = config.hybrid.retrieval_mode
+        else:
+            self.retrieval_mode = "hybrid" if self.hybrid_retriever is not None else "vector"
+
+        logger.info(
+            f"Initialized RAGPipeline (retrieval_mode={self.retrieval_mode}, "
+            f"reranker={'enabled' if (self.reranker and getattr(self.reranker, 'model', None)) else 'disabled'}, "
+            f"verifier={'enabled' if self.verifier is not None else 'disabled'}, "
+            f"citations={'enabled' if self.citation_engine is not None else 'disabled'}, "
+            f"comparator={'enabled' if self.comparator is not None else 'disabled'}, "
+            f"intelligence={'enabled' if self.research_intelligence is not None else 'disabled'})"
+        )
+
 
     def ingest_pdf(
         self,
@@ -37,7 +210,7 @@ class RAGPipeline:
         collection_name: Optional[str] = None,
         force_recreate: bool = False,
     ) -> Dict[str, Any]:
-        """Ingest a PDF document into the vector store.
+        """Ingest a PDF document into the vector store with structure awareness and provenance.
 
         Args:
             pdf_path: Path to PDF file
@@ -50,44 +223,120 @@ class RAGPipeline:
         pdf_path = Path(pdf_path)
         logger.info(f"Starting PDF ingestion: {pdf_path}")
 
+        # Compute deterministic document ID based on content
+        try:
+            with open(pdf_path, "rb") as f:
+                content_bytes = f.read()
+            document_id = f"doc_{hashlib.sha256(content_bytes).hexdigest()[:12]}"
+        except Exception:
+            document_id = f"doc_{hashlib.sha256(str(pdf_path.name).encode()).hexdigest()[:12]}"
+
         # Extract text
         logger.debug("Extracting text from PDF...")
         texts = self.pdf_extractor.extract_text(pdf_path)
         logger.info(f"Extracted {len(texts)} pages")
 
-        # Chunk text
-        logger.debug("Chunking text...")
-        chunks = self.text_chunker.chunk_texts(texts)
-        logger.info(f"Created {len(chunks)} chunks")
-
-        # Create collection
+        # Create or recreate collection
         if force_recreate:
             self.vector_store.delete_collection()
+            if self.hybrid_retriever and getattr(self.hybrid_retriever, "bm25_retriever", None):
+                self.hybrid_retriever.bm25_retriever.clear_index()
 
         self.vector_store.create_collection()
 
-        # Generate metadata
-        metadata = [
-            {
-                "source": str(pdf_path),
-                "source_file": pdf_path.name,
-                "chunk_size": len(chunk),
-            }
-            for chunk in chunks
-        ]
+        # Chunk text with structure awareness and page metadata
+        logger.debug("Chunking text with structure awareness...")
+        all_chunks = []
+        all_metadatas = []
+        all_ids = []
+        current_section = ""
+        global_chunk_idx = 0
+
+        # Try structure-aware page chunking if available
+        if hasattr(self.text_chunker, "chunk_page_with_metadata") and callable(
+            getattr(self.text_chunker, "chunk_page_with_metadata")
+        ):
+            try:
+                for page_idx, page_text in enumerate(texts):
+                    page_number = page_idx + 1
+                    if not page_text or not str(page_text).strip():
+                        continue
+                    page_chunks = self.text_chunker.chunk_page_with_metadata(
+                        page_text=str(page_text),
+                        page_number=page_number,
+                        document_id=document_id,
+                        source_file=pdf_path.name,
+                        document_type="pdf",
+                        start_chunk_index=global_chunk_idx,
+                        initial_section=current_section,
+                    )
+                    if isinstance(page_chunks, list):
+                        for chunk_item in page_chunks:
+                            if isinstance(chunk_item, dict) and "text" in chunk_item:
+                                all_chunks.append(chunk_item["text"])
+                                all_metadatas.append(chunk_item)
+                                all_ids.append(
+                                    chunk_item.get(
+                                        "chunk_id",
+                                        f"{document_id}_p{page_number}_c{global_chunk_idx}",
+                                    )
+                                )
+                                if chunk_item.get("section"):
+                                    current_section = chunk_item["section"]
+                                global_chunk_idx += 1
+            except Exception as e:
+                logger.warning(f"Error during chunk_page_with_metadata: {e}")
+
+        # Fallback to chunk_texts if page chunking didn't produce chunks (e.g. in mocked tests)
+        if not all_chunks and hasattr(self.text_chunker, "chunk_texts"):
+            fallback_chunks = self.text_chunker.chunk_texts(texts)
+            if isinstance(fallback_chunks, list):
+                for i, chunk in enumerate(fallback_chunks):
+                    cid = f"{document_id}_p1_c{i}"
+                    all_chunks.append(chunk)
+                    all_ids.append(cid)
+                    all_metadatas.append({
+                        "text": chunk,
+                        "document_id": document_id,
+                        "source": str(pdf_path),
+                        "source_file": pdf_path.name,
+                        "page_number": 1,
+                        "section": "",
+                        "chunk_id": cid,
+                        "chunk_index": i,
+                        "chunk_size": len(chunk) if isinstance(chunk, str) else 0,
+                        "document_type": "pdf",
+                    })
+
+        logger.info(f"Created {len(all_chunks)} chunks with metadata")
 
         # Add to vector store
         logger.debug("Adding chunks to vector store...")
         self.vector_store.add_documents(
-            texts=chunks,
-            metadata=metadata,
+            texts=all_chunks,
+            ids=all_ids,
+            metadata=all_metadatas,
         )
+
+        # Add to BM25 index and persist
+        if self.hybrid_retriever and getattr(self.hybrid_retriever, "bm25_retriever", None):
+            bm25_chunks = [
+                {"chunk_id": cid, "text": txt, "metadata": meta}
+                for cid, txt, meta in zip(all_ids, all_chunks, all_metadatas)
+            ]
+            self.hybrid_retriever.bm25_retriever.add_documents(bm25_chunks)
+            if self.hybrid_retriever.bm25_retriever.persist_path:
+                try:
+                    self.hybrid_retriever.bm25_retriever.save()
+                except Exception as e:
+                    logger.debug(f"Could not persist BM25 index: {e}")
 
         result = {
             "success": True,
+            "document_id": document_id,
             "pdf_path": str(pdf_path),
             "pages_extracted": len(texts),
-            "chunks_created": len(chunks),
+            "chunks_created": len(all_chunks),
             "collection_name": self.vector_store.collection_name,
         }
 
@@ -98,31 +347,144 @@ class RAGPipeline:
         self,
         query: str,
         n_results: int = 5,
+        mode: Optional[str] = None,
+        rerank: Optional[bool] = None,
     ) -> List[str]:
         """Retrieve relevant documents for a query.
 
         Args:
             query: Query text
             n_results: Number of results to retrieve
+            mode: Optional 'vector' or 'hybrid' (defaults to self.retrieval_mode)
+            rerank: Optional boolean to enable/disable reranking
 
         Returns:
-            List of relevant document chunks
+            List of relevant document chunk strings
         """
-        logger.debug(f"Retrieving documents for query: {query}")
-
-        # Ensure collection exists (load from persistence if needed)
-        if self.vector_store.collection is None:
-            self.vector_store.create_collection()
-
-        results = self.vector_store.query(
-            query_texts=[query],
+        results = self.retrieve_with_metadata(
+            query=query,
             n_results=n_results,
+            mode=mode,
+            rerank=rerank,
         )
+        return [c["text"] for c in results if "text" in c]
 
-        documents = results["documents"][0] if results["documents"] else []
-        logger.info(f"Retrieved {len(documents)} documents")
+    def retrieve_with_metadata(
+        self,
+        query: str,
+        n_results: int = 5,
+        mode: Optional[str] = None,
+        fusion_method: Optional[str] = None,
+        rerank: Optional[bool] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve relevant documents along with provenance, retrieval scores, and optional reranker scores.
 
-        return documents
+        Args:
+            query: Query text
+            n_results: Number of results to retrieve
+            mode: Optional 'vector' or 'hybrid' (defaults to self.retrieval_mode)
+            fusion_method: Optional 'weighted' or 'rrf'
+            rerank: Optional boolean to toggle neural reranking (defaults to config setting)
+
+        Returns:
+            List of candidate dictionaries
+        """
+        logger.debug(f"Retrieving documents with metadata for query: {query}")
+        active_mode = (mode or self.retrieval_mode).lower()
+
+        # Pure vector retrieval mode
+        if active_mode == "vector" or not self.hybrid_retriever:
+            if hasattr(self.vector_store, "collection") and self.vector_store.collection is None:
+                self.vector_store.create_collection()
+
+            results = self.vector_store.query(
+                query_texts=[query],
+                n_results=n_results,
+            )
+
+            if not results or "documents" not in results or not results["documents"]:
+                return []
+
+            docs = results["documents"][0] if results.get("documents") else []
+            metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
+            ids = results["ids"][0] if results.get("ids") else [""] * len(docs)
+            dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
+
+            structured = []
+            for rank, (doc, meta, cid, dist) in enumerate(zip(docs, metas, ids, dists), start=1):
+                dist_val = float(dist) if dist is not None else 0.0
+                similarity = 1.0 / (1.0 + max(0.0, dist_val))
+                chunk_id = cid or (meta.get("chunk_id") if isinstance(meta, dict) else "")
+                structured.append({
+                    "text": doc,
+                    "metadata": meta or {},
+                    "id": chunk_id,
+                    "chunk_id": chunk_id,
+                    "distance": dist_val,
+                    "dense_score": similarity,
+                    "hybrid_score": similarity,
+                    "retrieval_source": "vector",
+                    "rank": rank,
+                })
+
+            logger.info(f"Retrieved {len(structured)} documents with metadata (vector)")
+            return structured
+
+        # Hybrid retrieval mode: determine whether to rerank
+        should_rerank = rerank
+        if should_rerank is None:
+            if self.reranker is not None and getattr(self.reranker, "model", None) is not None:
+                should_rerank = (
+                    self.config.rerank.enabled
+                    if (self.config and getattr(self.config, "rerank", None))
+                    else True
+                )
+            else:
+                should_rerank = False
+
+        if should_rerank and self.reranker is not None and getattr(self.reranker, "model", None) is not None:
+            # Retrieve candidate pool of size candidate_top_k
+            candidate_k = 20
+            if self.config and getattr(self.config, "rerank", None):
+                candidate_k = max(n_results, self.config.rerank.candidate_top_k)
+            else:
+                candidate_k = max(n_results, 20)
+
+            candidate_pool = self.hybrid_retriever.retrieve_with_metadata(
+                query=query,
+                n_results=candidate_k,
+                mode="hybrid",
+                fusion_method=fusion_method,
+            )
+            for c in candidate_pool:
+                if "id" not in c:
+                    c["id"] = c.get("chunk_id", "")
+                if "distance" not in c:
+                    c["distance"] = c.get("distance", 0.0)
+
+            reranked = self.reranker.rerank(
+                query=query,
+                candidates=candidate_pool,
+                top_k=n_results,
+            )
+            logger.info(f"Retrieved and reranked {len(reranked)} documents (hybrid+rerank)")
+            return reranked
+
+        # Hybrid retrieval without reranking
+        candidates = self.hybrid_retriever.retrieve_with_metadata(
+            query=query,
+            n_results=n_results,
+            mode="hybrid",
+            fusion_method=fusion_method,
+        )
+        for c in candidates:
+            if "id" not in c:
+                c["id"] = c.get("chunk_id", "")
+            if "distance" not in c:
+                c["distance"] = c.get("distance", 0.0)
+
+        logger.info(f"Retrieved {len(candidates)} documents with metadata (hybrid)")
+        return candidates
 
     def generate_response(
         self,
@@ -178,40 +540,295 @@ Answer:"""
         n_retrieve: int = 5,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        mode: Optional[str] = None,
+        fusion_method: Optional[str] = None,
+        rerank: Optional[bool] = None,
+        verify: Optional[bool] = None,
+        cite: Optional[bool] = None,
     ) -> Dict[str, Any]:
-        """Execute complete RAG query: retrieve + generate.
+        """Execute complete RAG query: retrieve (+ optional rerank) + generate (+ optional verify) + citations.
 
         Args:
             query: Query text
             n_retrieve: Number of documents to retrieve
             temperature: Sampling temperature
             max_tokens: Maximum tokens in response
+            mode: Optional 'vector' or 'hybrid'
+            fusion_method: Optional 'weighted' or 'rrf'
+            rerank: Optional boolean to toggle reranking
+            verify: Optional boolean to toggle evidence verification
+            cite: Optional boolean to toggle citation generation
 
         Returns:
-            Result dict with query, retrieved docs, and response
+            Result dict with query, retrieved docs, metadata, response, verification, citations, and latency info
         """
         logger.info(f"Executing RAG query: {query}")
+        active_mode = (mode or self.retrieval_mode).lower()
 
-        # Retrieve
-        documents = self.retrieve(query, n_results=n_retrieve)
+        t0_retrieval = time.perf_counter()
+        retrieved_chunks = self.retrieve_with_metadata(
+            query=query,
+            n_results=n_retrieve,
+            mode=active_mode,
+            fusion_method=fusion_method,
+            rerank=rerank,
+        )
+        retrieval_latency_ms = (time.perf_counter() - t0_retrieval) * 1000.0
+        documents = [c["text"] for c in retrieved_chunks] if retrieved_chunks else []
 
-        # Generate
+        # Generate response
+        t0_gen = time.perf_counter()
         response = self.generate_response(
             query=query,
             retrieved_documents=documents,
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        generation_latency_ms = (time.perf_counter() - t0_gen) * 1000.0
+
+        # Verification Stage (Step 5)
+        should_verify = verify
+        if should_verify is None:
+            if self.verifier is not None:
+                should_verify = (
+                    self.config.verification.enabled
+                    if (self.config and getattr(self.config, "verification", None))
+                    else True
+                )
+            else:
+                should_verify = False
+
+        verification_result = None
+        if should_verify and self.verifier is not None:
+            try:
+                verification_result = self.verifier.verify(
+                    query=query,
+                    answer=response,
+                    evidence=retrieved_chunks,
+                )
+            except Exception as e:
+                logger.warning(f"Verification execution failed: {e}")
+                verification_result = {
+                    "status": "insufficient_evidence",
+                    "supported_claims": [],
+                    "unsupported_claims": [response],
+                    "contradicted_claims": [],
+                    "claims": [{"claim": response, "status": "insufficient_evidence", "evidence_ids": []}],
+                    "evidence": [],
+                    "verification_latency_ms": 0.0,
+                    "error": str(e),
+                }
+
+        # Grounded Citation Generation Stage (Step 6)
+        should_cite = cite
+        if should_cite is None:
+            should_cite = True if self.citation_engine is not None else False
+
+        citation_result = None
+        citation_latency_ms = 0.0
+        if should_cite and self.citation_engine is not None:
+            try:
+                if verification_result is not None and "claims" in verification_result and verification_result["claims"]:
+                    eval_claims = verification_result["claims"]
+                else:
+                    eval_claims = [{
+                        "claim": response,
+                        "status": "supported" if retrieved_chunks else "insufficient_evidence",
+                        "evidence_ids": [c.get("chunk_id") or c.get("id") for c in retrieved_chunks[:3]],
+                    }]
+
+                citation_result = self.citation_engine.generate_citations(
+                    claims=eval_claims,
+                    evidence_chunks=retrieved_chunks,
+                    answer_text=response,
+                )
+                citation_latency_ms = citation_result.get("citation_latency_ms", 0.0)
+            except Exception as e:
+                logger.warning(f"Citation generation failed: {e}")
+                citation_result = {
+                    "citations": [],
+                    "claims": [],
+                    "annotated_response": response,
+                    "unsupported_claims": [],
+                    "citation_latency_ms": 0.0,
+                    "error": str(e),
+                }
 
         result = {
             "query": query,
             "retrieved_documents": documents,
+            "retrieved_chunks": retrieved_chunks,
             "response": response,
             "n_documents_retrieved": len(documents),
+            "retrieval_mode": active_mode,
+            "retrieval_latency_ms": round(retrieval_latency_ms, 2),
+            "generation_latency_ms": round(generation_latency_ms, 2),
         }
+        if active_mode == "hybrid" and self.hybrid_retriever:
+            result["fusion_method"] = fusion_method or getattr(
+                self.hybrid_retriever, "fusion_method", "weighted"
+            )
+            is_reranked = (
+                (rerank is not False)
+                and (self.reranker is not None)
+                and (getattr(self.reranker, "model", None) is not None)
+            )
+            result["reranking_enabled"] = is_reranked
+            if is_reranked:
+                result["reranker_model"] = self.reranker.model_name
+
+        if verification_result is not None:
+            result["verification"] = verification_result
+            result["verification_enabled"] = True
+            result["verification_latency_ms"] = verification_result.get("verification_latency_ms", 0.0)
+        else:
+            result["verification_enabled"] = False
+            result["verification_latency_ms"] = 0.0
+
+        if citation_result is not None:
+            result["citations"] = citation_result.get("citations", [])
+            result["claims"] = citation_result.get("claims", [])
+            result["annotated_response"] = citation_result.get("annotated_response", response)
+            result["citations_enabled"] = True
+            result["citation_latency_ms"] = citation_latency_ms
+            if "unsupported_claims" in citation_result:
+                result["unsupported_claims"] = citation_result["unsupported_claims"]
+            if "metrics" in citation_result:
+                result["citation_metrics"] = citation_result["metrics"]
+        else:
+            result["citations"] = []
+            result["claims"] = []
+            result["annotated_response"] = response
+            result["citations_enabled"] = False
+            result["citation_latency_ms"] = 0.0
+
+        total_lat = (
+            retrieval_latency_ms
+            + generation_latency_ms
+            + result["verification_latency_ms"]
+            + result["citation_latency_ms"]
+        )
+        result["total_latency_ms"] = round(total_lat, 2)
 
         logger.info("RAG query completed successfully")
         return result
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """List all distinct documents indexed in the vector store with metadata.
+
+        Returns:
+            List of document metadata dictionaries
+        """
+        if self.comparator is not None:
+            return self.comparator.get_indexed_documents()
+
+        if hasattr(self.vector_store, "collection") and self.vector_store.collection is not None:
+            try:
+                data = self.vector_store.collection.get(include=["metadatas"])
+                metadatas = data.get("metadatas") or []
+                docs_seen: Dict[str, Dict[str, Any]] = {}
+                for m in metadatas:
+                    if not m or not isinstance(m, dict):
+                        continue
+                    doc_id = m.get("document_id") or ""
+                    source_file = m.get("source_file") or m.get("source") or "unknown"
+                    key = doc_id or source_file
+                    if key not in docs_seen:
+                        docs_seen[key] = {
+                            "document_id": doc_id,
+                            "source_file": source_file,
+                            "chunk_count": 0,
+                            "total_pages": 1,
+                        }
+                    docs_seen[key]["chunk_count"] += 1
+                return list(docs_seen.values())
+            except Exception as e:
+                logger.warning(f"Could not retrieve documents from vector store: {e}")
+                return []
+        return []
+
+    def compare_documents(
+        self,
+        documents: List[str],
+        query: Optional[str] = None,
+        aspects: Optional[List[str]] = None,
+        n_chunks_per_doc: int = 4,
+        temperature: float = 0.2,
+        max_tokens: int = 2500,
+    ) -> Dict[str, Any]:
+        """Perform multi-document comparative analysis across 2 or more research papers.
+
+        Args:
+            documents: List of document filenames or document IDs
+            query: Optional freeform comparison question
+            aspects: Optional list of comparison aspects
+            n_chunks_per_doc: Number of top chunks to retrieve per paper
+            temperature: Sampling temperature for generation
+            max_tokens: Maximum tokens in response
+
+        Returns:
+            Structured comparison results with matrix, markdown_table, synthesis, and citations
+        """
+        if self.comparator is None:
+            from app.comparison import DocumentComparator
+
+            self.comparator = DocumentComparator(
+                pipeline=self,
+                llm_client=self.llm_client,
+                verifier=self.verifier,
+                citation_engine=self.citation_engine,
+                config=self.config,
+            )
+
+        return self.comparator.compare_documents(
+            selected_documents=documents,
+            query=query,
+            aspects=aspects,
+            n_chunks_per_doc=n_chunks_per_doc,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    def analyze_research(
+        self,
+        documents: List[str],
+        focus_topic: Optional[str] = None,
+        n_chunks_per_doc: int = 4,
+        temperature: float = 0.2,
+        max_tokens: int = 3000,
+    ) -> Dict[str, Any]:
+        """Perform multi-paper literature review and research gap discovery (Step 8).
+
+        Args:
+            documents: List of 2 or more document filenames or IDs
+            focus_topic: Optional specific research domain or topic focus
+            n_chunks_per_doc: Number of top chunks to retrieve per paper
+            temperature: Sampling temperature for generation
+            max_tokens: Maximum tokens in response
+
+        Returns:
+            Structured research intelligence results with literature_review,
+            research_gaps, research_questions, and citations.
+        """
+        if getattr(self, "research_intelligence", None) is None:
+            from app.intelligence import ResearchIntelligenceEngine
+
+            self.research_intelligence = ResearchIntelligenceEngine(
+                pipeline=self,
+                llm_client=self.llm_client,
+                verifier=self.verifier,
+                citation_engine=self.citation_engine,
+                config=self.config,
+            )
+
+        return self.research_intelligence.analyze_research(
+            selected_documents=documents,
+            focus_topic=focus_topic,
+            n_chunks_per_doc=n_chunks_per_doc,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
 
     def generate_quiz(
         self,
@@ -227,13 +844,11 @@ Answer:"""
             temperature: Sampling temperature for generation
 
         Returns:
-            List of question dicts, each with: id, question, context, expected_answer
-            ("context" and "expected_answer" are the grading key — not shown to the user)
+            List of question dicts with id, question, expected_answer, context
         """
         from app.utils import extract_json
 
-        if self.vector_store.collection is None:
-            self.vector_store.create_collection()
+        logger.info(f"Generating {num_questions} quiz questions from indexed content")
 
         chunks = self.vector_store.sample_documents(n=n_context_chunks)
         if not chunks:
@@ -269,14 +884,12 @@ Respond with ONLY a valid JSON array, no other text, in exactly this format:
 
         questions = []
         for i, item in enumerate(parsed[:num_questions]):
-            questions.append(
-                {
-                    "id": f"q{i + 1}",
-                    "question": item.get("question", "").strip(),
-                    "expected_answer": item.get("expected_answer", "").strip(),
-                    "context": context,
-                }
-            )
+            questions.append({
+                "id": f"q{i + 1}",
+                "question": item.get("question", "").strip(),
+                "expected_answer": item.get("expected_answer", "").strip(),
+                "context": context,
+            })
 
         logger.info(f"Generated {len(questions)} quiz questions")
         return questions
@@ -350,7 +963,7 @@ Respond with ONLY valid JSON, no other text, in exactly this format:
 
         model_info = self.llm_client.get_model_info()
 
-        return {
+        status = {
             "llm_provider": model_info.get("provider"),
             "llm_model": model_info.get("model"),
             "vector_store": "chromadb",
@@ -359,3 +972,64 @@ Respond with ONLY valid JSON, no other text, in exactly this format:
             "chunk_size": self.text_chunker.chunk_size,
             "chunk_overlap": self.text_chunker.chunk_overlap,
         }
+
+        if self.hybrid_retriever:
+            status["hybrid_retriever"] = {
+                "enabled": True,
+                "retrieval_mode": self.retrieval_mode,
+                "fusion_method": getattr(self.hybrid_retriever, "fusion_method", "weighted"),
+                "dense_weight": getattr(self.hybrid_retriever, "dense_weight", 0.5),
+                "bm25_weight": getattr(self.hybrid_retriever, "bm25_weight", 0.5),
+            }
+
+        if self.reranker and getattr(self.reranker, "model", None) is not None:
+            candidate_k = (
+                getattr(self.config.rerank, "candidate_top_k", 20)
+                if (self.config and getattr(self.config, "rerank", None))
+                else 20
+            )
+            final_k = (
+                getattr(self.config.rerank, "final_top_k", 5)
+                if (self.config and getattr(self.config, "rerank", None))
+                else 5
+            )
+            status["reranker"] = {
+                "enabled": True,
+                "model": self.reranker.model_name,
+                "candidate_top_k": candidate_k,
+                "final_top_k": final_k,
+            }
+        else:
+            status["reranker"] = {"enabled": False}
+
+        if self.verifier is not None:
+            status["verification"] = {
+                "enabled": True,
+                "temperature": getattr(self.verifier, "temperature", 0.0),
+                "max_tokens": getattr(self.verifier, "max_tokens", 1024),
+            }
+        else:
+            status["verification"] = {"enabled": False}
+
+        status["comparator"] = {"enabled": self.comparator is not None}
+        status["intelligence"] = {"enabled": self.research_intelligence is not None}
+        status["evaluation_dashboard"] = {"enabled": True}
+
+        return status
+
+    def get_evaluation_dashboard(self) -> Dict[str, Any]:
+        """Retrieve aggregated empirical metrics and experiment benchmarks (Step 9)."""
+        from app.evaluation.dashboard_service import DashboardService
+
+        if not hasattr(self, "_dashboard_service") or self._dashboard_service is None:
+            self._dashboard_service = DashboardService(pipeline=self)
+        return self._dashboard_service.get_dashboard_payload()
+
+    def run_evaluation_experiment(self, experiment_type: str = "all") -> Dict[str, Any]:
+        """Execute a live research benchmark experiment on demand (Step 9)."""
+        from app.evaluation.dashboard_service import DashboardService
+
+        if not hasattr(self, "_dashboard_service") or self._dashboard_service is None:
+            self._dashboard_service = DashboardService(pipeline=self)
+        return self._dashboard_service.run_live_experiment(experiment_type=experiment_type)
+

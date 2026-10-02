@@ -1,0 +1,79 @@
+{
+  "timestamp": "2026-09-25T17:36:27.695323",
+  "benchmark_task": "Multi-Document Paper Comparison & Cross-Document Matrix",
+  "total_cases_evaluated": 5,
+  "metrics": {
+    "matrix_correctness_pct": 100.0,
+    "citation_correctness_pct": 100.0,
+    "document_attribution_accuracy_pct": 100.0,
+    "missing_information_handling_pct": 100.0,
+    "average_comparison_latency_ms": 1.23
+  },
+  "case_results": [
+    {
+      "case_id": "comp_case_01",
+      "description": "2-Paper comparison across Dataset and Model",
+      "documents_count": 2,
+      "aspects_count": 2,
+      "citations_count": 2,
+      "missing_cells_count": 2,
+      "latency_ms": 0.76,
+      "matrix_correct": true,
+      "attribution_accurate": true,
+      "missing_handled": true,
+      "citations_correct": true
+    },
+    {
+      "case_id": "comp_case_02",
+      "description": "3-Paper comparison across Methodology, Results, and Limitations",
+      "documents_count": 3,
+      "aspects_count": 3,
+      "citations_count": 2,
+      "missing_cells_count": 7,
+      "latency_ms": 0.6,
+      "matrix_correct": true,
+      "attribution_accurate": true,
+      "missing_handled": true,
+      "citations_correct": true
+    },
+    {
+      "case_id": "comp_case_03",
+      "description": "Missing Information Handling (one paper has missing aspect)",
+      "documents_count": 2,
+      "aspects_count": 2,
+      "citations_count": 2,
+      "missing_cells_count": 2,
+      "latency_ms": 2.81,
+      "matrix_correct": true,
+      "attribution_accurate": true,
+      "missing_handled": true,
+      "citations_correct": true
+    },
+    {
+      "case_id": "comp_case_04",
+      "description": "Comprehensive 9-aspect academic matrix across 2 papers",
+      "documents_count": 2,
+      "aspects_count": 9,
+      "citations_count": 3,
+      "missing_cells_count": 15,
+      "latency_ms": 1.15,
+      "matrix_correct": true,
+      "attribution_accurate": true,
+      "missing_handled": true,
+      "citations_correct": true
+    },
+    {
+      "case_id": "comp_case_05",
+      "description": "Document Attribution Accuracy test (prevent cross-paper metric leakage)",
+      "documents_count": 2,
+      "aspects_count": 2,
+      "citations_count": 0,
+      "missing_cells_count": 4,
+      "latency_ms": 0.83,
+      "matrix_correct": true,
+      "attribution_accurate": true,
+      "missing_handled": true,
+      "citations_correct": true
+    }
+  ]
+}

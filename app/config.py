@@ -51,6 +51,43 @@ class PDFConfig:
 
 
 @dataclass
+class HybridConfig:
+    """Hybrid retrieval (Dense + BM25) configuration."""
+
+    enabled: bool = True
+    retrieval_mode: str = "hybrid"  # "hybrid" or "vector"
+    dense_top_k: int = 20
+    bm25_top_k: int = 20
+    final_top_k: int = 5
+    dense_weight: float = 0.5
+    bm25_weight: float = 0.5
+    fusion_method: str = "weighted"  # "weighted" or "rrf"
+    rrf_k: int = 60
+    bm25_persist_dir: str = "./data/bm25"
+
+
+@dataclass
+class RerankConfig:
+    """Neural Cross-Encoder reranking configuration."""
+
+    enabled: bool = True
+    model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    candidate_top_k: int = 20
+    final_top_k: int = 5
+    batch_size: int = 32
+
+
+@dataclass
+class VerificationConfig:
+    """Evidence verification and hallucination detection configuration."""
+
+    enabled: bool = True
+    temperature: float = 0.0
+    max_tokens: int = 1024
+    model: Optional[str] = None
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
 
@@ -58,6 +95,9 @@ class AppConfig:
     embedding: EmbeddingConfig
     chroma: ChromaConfig
     pdf: PDFConfig
+    hybrid: Optional[HybridConfig] = None
+    rerank: Optional[RerankConfig] = None
+    verification: Optional[VerificationConfig] = None
     input_dir: Path = Path("./data/input")
     output_dir: Path = Path("./data/output")
     log_level: str = "INFO"
@@ -124,6 +164,46 @@ def load_config() -> AppConfig:
     )
     Path(chroma_persist_dir).mkdir(parents=True, exist_ok=True)
 
+    bm25_persist_dir = os.getenv("BM25_PERSIST_DIR", "./data/bm25")
+    Path(bm25_persist_dir).mkdir(parents=True, exist_ok=True)
+
+    hybrid_enabled_str = os.getenv("HYBRID_RETRIEVAL_ENABLED", "true").lower()
+    hybrid_enabled = hybrid_enabled_str in ("true", "1", "yes")
+
+    hybrid_config = HybridConfig(
+        enabled=hybrid_enabled,
+        retrieval_mode=os.getenv("RETRIEVAL_MODE", "hybrid").lower(),
+        dense_top_k=int(os.getenv("HYBRID_DENSE_TOP_K", "20")),
+        bm25_top_k=int(os.getenv("HYBRID_BM25_TOP_K", "20")),
+        final_top_k=int(os.getenv("HYBRID_FINAL_TOP_K", "5")),
+        dense_weight=float(os.getenv("HYBRID_DENSE_WEIGHT", "0.5")),
+        bm25_weight=float(os.getenv("HYBRID_BM25_WEIGHT", "0.5")),
+        fusion_method=os.getenv("HYBRID_FUSION_METHOD", "weighted").lower(),
+        rrf_k=int(os.getenv("HYBRID_RRF_K", "60")),
+        bm25_persist_dir=bm25_persist_dir,
+    )
+
+    rerank_enabled_str = os.getenv("RERANKING_ENABLED", "true").lower()
+    rerank_enabled = rerank_enabled_str in ("true", "1", "yes")
+
+    rerank_config = RerankConfig(
+        enabled=rerank_enabled,
+        model_name=os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
+        candidate_top_k=int(os.getenv("RERANKER_CANDIDATE_TOP_K", "20")),
+        final_top_k=int(os.getenv("RERANKER_FINAL_TOP_K", "5")),
+        batch_size=int(os.getenv("RERANKER_BATCH_SIZE", "32")),
+    )
+
+    verification_enabled_str = os.getenv("EVIDENCE_VERIFICATION_ENABLED", "true").lower()
+    verification_enabled = verification_enabled_str in ("true", "1", "yes")
+
+    verification_config = VerificationConfig(
+        enabled=verification_enabled,
+        temperature=float(os.getenv("VERIFICATION_TEMPERATURE", "0.0")),
+        max_tokens=int(os.getenv("VERIFICATION_MAX_TOKENS", "1024")),
+        model=os.getenv("VERIFICATION_MODEL") or None,
+    )
+
     # Build configuration
     config = AppConfig(
         llm=LLMConfig(
@@ -153,6 +233,9 @@ def load_config() -> AppConfig:
                 "PDF_EXTRACTION_METHOD", "pdfplumber"
             ),
         ),
+        hybrid=hybrid_config,
+        rerank=rerank_config,
+        verification=verification_config,
         input_dir=input_dir,
         output_dir=output_dir,
         log_level=os.getenv("LOG_LEVEL", "INFO"),
@@ -191,5 +274,44 @@ def validate_config(config: AppConfig) -> bool:
     if config.llm.max_tokens <= 0:
         raise ValueError("LLM max_tokens must be positive")
 
+    if config.hybrid:
+        if config.hybrid.dense_top_k <= 0:
+            raise ValueError("Hybrid dense_top_k must be positive")
+        if config.hybrid.bm25_top_k <= 0:
+            raise ValueError("Hybrid bm25_top_k must be positive")
+        if config.hybrid.final_top_k <= 0:
+            raise ValueError("Hybrid final_top_k must be positive")
+        if config.hybrid.dense_weight < 0:
+            raise ValueError("Hybrid dense_weight cannot be negative")
+        if config.hybrid.bm25_weight < 0:
+            raise ValueError("Hybrid bm25_weight cannot be negative")
+        if config.hybrid.fusion_method not in ["weighted", "rrf"]:
+            raise ValueError(
+                f"Invalid fusion_method: {config.hybrid.fusion_method}. "
+                "Must be 'weighted' or 'rrf'"
+            )
+        if config.hybrid.retrieval_mode not in ["hybrid", "vector"]:
+            raise ValueError(
+                f"Invalid retrieval_mode: {config.hybrid.retrieval_mode}. "
+                "Must be 'hybrid' or 'vector'"
+            )
+        if config.hybrid.rrf_k <= 0:
+            raise ValueError("Hybrid rrf_k must be positive")
+
+    if config.rerank:
+        if config.rerank.candidate_top_k <= 0:
+            raise ValueError("Reranker candidate_top_k must be positive")
+        if config.rerank.final_top_k <= 0:
+            raise ValueError("Reranker final_top_k must be positive")
+        if config.rerank.batch_size <= 0:
+            raise ValueError("Reranker batch_size must be positive")
+
+    if config.verification:
+        if config.verification.temperature < 0 or config.verification.temperature > 2:
+            raise ValueError("Verification temperature must be between 0 and 2")
+        if config.verification.max_tokens <= 0:
+            raise ValueError("Verification max_tokens must be positive")
+
     logger.info("Configuration validation passed")
     return True
+

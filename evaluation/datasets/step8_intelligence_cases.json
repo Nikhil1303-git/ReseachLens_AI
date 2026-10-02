@@ -1,0 +1,68 @@
+[
+  {
+    "case_id": "intel_case_01",
+    "description": "2-Paper Literature Review & Gaps (Transformer vs BERT)",
+    "documents": [
+      "Attention_Is_All_You_Need.pdf",
+      "BERT_Pretraining.pdf"
+    ],
+    "topic": "Self-attention mechanisms and bidirectional representation learning",
+    "expected_document_count": 2,
+    "expected_min_gaps": 1,
+    "expected_min_questions": 1,
+    "has_missing_evidence": false
+  },
+  {
+    "case_id": "intel_case_02",
+    "description": "3-Paper Cross-Domain Analysis (Transformer, BERT, ResNet)",
+    "documents": [
+      "Attention_Is_All_You_Need.pdf",
+      "BERT_Pretraining.pdf",
+      "ResNet_Deep_Residual.pdf"
+    ],
+    "topic": "Deep representation learning, self-attention, and residual training architectures",
+    "expected_document_count": 3,
+    "expected_min_gaps": 1,
+    "expected_min_questions": 1,
+    "has_missing_evidence": false
+  },
+  {
+    "case_id": "intel_case_03",
+    "description": "Conflicting Findings & Efficiency Trade-offs Detection",
+    "documents": [
+      "Attention_Is_All_You_Need.pdf",
+      "BERT_Pretraining.pdf"
+    ],
+    "topic": "Computational complexity, memory overhead, and parameter scaling bounds",
+    "expected_document_count": 2,
+    "expected_min_gaps": 1,
+    "expected_min_questions": 1,
+    "has_missing_evidence": false
+  },
+  {
+    "case_id": "intel_case_04",
+    "description": "Missing Evidence Fallback ('Insufficient evidence.' and zero fake citations)",
+    "documents": [
+      "BERT_Pretraining.pdf",
+      "ResNet_Deep_Residual.pdf"
+    ],
+    "topic": "Superconducting qubit coherence times and cryogenic quantum interconnects",
+    "expected_document_count": 2,
+    "expected_min_gaps": 0,
+    "expected_min_questions": 0,
+    "has_missing_evidence": true
+  },
+  {
+    "case_id": "intel_case_05",
+    "description": "Document Attribution & Grounded Question Formulation",
+    "documents": [
+      "Attention_Is_All_You_Need.pdf",
+      "ResNet_Deep_Residual.pdf"
+    ],
+    "topic": "Comparison of sequence translation and vision residual networks",
+    "expected_document_count": 2,
+    "expected_min_gaps": 1,
+    "expected_min_questions": 1,
+    "has_missing_evidence": false
+  }
+]
