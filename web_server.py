@@ -47,6 +47,7 @@ def status():
 
 @app.post("/api/ingest")
 def ingest():
+    """Ingest a PDF file — Step 10 security: size check, magic bytes, sanitized filename."""
     upload = request.files.get("file")
     if upload is None or not upload.filename:
         return jsonify({"error": "Choose a PDF file first."}), 400
@@ -54,15 +55,49 @@ def ingest():
         return jsonify({"error": "Only PDF files are supported."}), 400
 
     try:
+        from app.security import sanitize_filename as _sanitize, FileSizeError, FileTypeError, DuplicateDocumentError
+    except ImportError:
+        _sanitize = None
+        FileSizeError = FileTypeError = DuplicateDocumentError = Exception
+
+    try:
         pipeline, config = get_pipeline()
-        filename = secure_filename(upload.filename)
+
+        # Step 10: Sanitize filename
+        raw_name = upload.filename or "document.pdf"
+        filename = _sanitize(raw_name) if _sanitize else secure_filename(raw_name)
+        if not filename:
+            return jsonify({"error": "Invalid filename."}), 400
+
+        # Step 10: File-size pre-check (before writing to disk)
+        sec_cfg = getattr(config, "security", None)
+        max_mb = sec_cfg.max_pdf_size_mb if sec_cfg else 50
+        upload.stream.seek(0, 2)
+        upload_size = upload.stream.tell()
+        upload.stream.seek(0)
+        if upload_size > max_mb * 1024 * 1024:
+            return jsonify({
+                "error": f"File too large ({upload_size / 1024 / 1024:.1f} MB). Maximum allowed: {max_mb} MB."
+            }), 413
+
         pdf_path = config.input_dir / filename
         upload.save(pdf_path)
+
         result = pipeline.ingest_pdf(
             pdf_path=pdf_path,
             force_recreate=request.form.get("recreate") == "true",
         )
         return jsonify(result)
+
+    except FileTypeError as err:
+        logger.warning("File type validation failed: %s", err)
+        return jsonify({"error": str(err)}), 415
+    except FileSizeError as err:
+        logger.warning("File size validation failed: %s", err)
+        return jsonify({"error": str(err)}), 413
+    except DuplicateDocumentError as err:
+        logger.info("Duplicate document rejected: %s", err)
+        return jsonify({"error": str(err), "duplicate": True}), 409
     except Exception as error:
         logger.exception("PDF ingestion failed")
         return jsonify({"error": str(error)}), 500
@@ -74,6 +109,22 @@ def query():
     question = str(payload.get("query", "")).strip()
     if not question:
         return jsonify({"error": "Enter a question first."}), 400
+
+    # Step 10: Query sanitization & injection detection
+    try:
+        from app.security import sanitize_query, detect_prompt_injection
+        question = sanitize_query(question)
+        is_suspicious, reason = detect_prompt_injection(question)
+        if is_suspicious:
+            logger.warning("Prompt injection detected in query.")
+            return jsonify({
+                "error": "Query rejected: potential prompt injection detected.",
+                "detail": reason,
+            }), 400
+    except ImportError:
+        pass
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
 
     try:
         pipeline, _ = get_pipeline()

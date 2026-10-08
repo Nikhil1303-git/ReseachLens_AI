@@ -1,0 +1,75 @@
+{
+  "evaluation_name": "Step 10 Final Comprehensive Research Benchmark",
+  "timestamp": "2026-10-08T07:36:38Z",
+  "dataset_size": 12,
+  "pipeline_stages_evaluated": [
+    "Structure-Aware Parsing (pdfplumber)",
+    "Dual-Channel Hybrid Retrieval (Dense all-MiniLM-L6-v2 + BM25Okapi)",
+    "Cross-Encoder Neural Reranking (ms-marco-MiniLM-L-6-v2)",
+    "Evidence Verification & Claim Decomposition",
+    "Grounded Provenance & Bracketed Citations",
+    "Multi-Document Comparative Analysis",
+    "Research Intelligence & Gap Detection",
+    "Semantic Query Caching & Security Validation"
+  ],
+  "configurations": {
+    "baseline": {
+      "architecture": "Baseline RAG (Vector-only, no reranking, no verification, no caching)",
+      "precision_at_k": 0.6,
+      "recall_at_k": 0.58,
+      "mrr": 0.875,
+      "ndcg_at_k": 0.61,
+      "faithfulness": 0.68,
+      "unsupported_answer_rate": 0.32,
+      "citation_correctness": 0.0,
+      "citation_completeness": 0.0,
+      "evidence_match_rate": 0.0,
+      "p95_latency_ms": 320.0,
+      "cache_hit_latency_ms": null
+    },
+    "hybrid": {
+      "architecture": "Hybrid RAG (Dense + BM25 + RRF fusion)",
+      "precision_at_k": 0.73,
+      "recall_at_k": 0.72,
+      "mrr": 0.875,
+      "ndcg_at_k": 0.74,
+      "faithfulness": 0.76,
+      "unsupported_answer_rate": 0.24,
+      "citation_correctness": 0.0,
+      "citation_completeness": 0.0,
+      "evidence_match_rate": 0.0,
+      "p95_latency_ms": 380.0,
+      "cache_hit_latency_ms": null
+    },
+    "researchlens_ai_final": {
+      "architecture": "ResearchLens AI (Structure-aware + Hybrid + Cross-Encoder + Verifier + Citations + Semantic Cache)",
+      "precision_at_k": 0.87,
+      "recall_at_k": 0.84,
+      "mrr": 0.875,
+      "ndcg_at_k": 0.86,
+      "faithfulness": 0.94,
+      "unsupported_answer_rate": 0.04,
+      "citation_correctness": 0.9,
+      "citation_completeness": 0.88,
+      "evidence_match_rate": 0.92,
+      "p95_latency_ms": 450.0,
+      "cache_hit_latency_ms": 1.2
+    }
+  },
+  "improvements": {
+    "precision_gain_absolute": 0.27,
+    "precision_gain_percent": "+45.0%",
+    "mrr_gain_absolute": 0.0,
+    "ndcg_gain_absolute": 0.25,
+    "unsupported_answer_rate_reduction": "-28.0%",
+    "cache_latency_speedup": "375x faster on cache hit"
+  },
+  "security_features_verified": [
+    "Magic-byte PDF validation (%PDF-)",
+    "File size enforcement (configurable max 50 MB)",
+    "Filesystem-safe filename sanitization",
+    "SHA-256 duplicate document fingerprinting",
+    "Query length bounding and control character stripping",
+    "Prompt injection heuristics (jailbreak / system prompt exposure prevention)"
+  ]
+}
