@@ -88,6 +88,29 @@ class VerificationConfig:
 
 
 @dataclass
+class CacheConfig:
+    """Semantic query cache configuration (Step 10)."""
+
+    enabled: bool = True
+    similarity_threshold: float = 0.92
+    ttl_seconds: int = 3600
+    max_size: int = 200
+    persist_path: str = "./data/cache/semantic_cache.json"
+
+
+@dataclass
+class SecurityConfig:
+    """Upload security configuration (Step 10)."""
+
+    max_pdf_size_mb: int = 50
+    validate_magic_bytes: bool = True
+    detect_duplicates: bool = True
+    sanitize_filenames: bool = True
+    max_query_length: int = 2000
+    detect_prompt_injection: bool = True
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
 
@@ -98,6 +121,8 @@ class AppConfig:
     hybrid: Optional[HybridConfig] = None
     rerank: Optional[RerankConfig] = None
     verification: Optional[VerificationConfig] = None
+    cache: Optional[CacheConfig] = None
+    security: Optional[SecurityConfig] = None
     input_dir: Path = Path("./data/input")
     output_dir: Path = Path("./data/output")
     log_level: str = "INFO"
@@ -204,6 +229,24 @@ def load_config() -> AppConfig:
         model=os.getenv("VERIFICATION_MODEL") or None,
     )
 
+    cache_enabled_str = os.getenv("SEMANTIC_CACHE_ENABLED", "true").lower()
+    cache_config = CacheConfig(
+        enabled=cache_enabled_str in ("true", "1", "yes"),
+        similarity_threshold=float(os.getenv("CACHE_SIM_THRESHOLD", "0.92")),
+        ttl_seconds=int(os.getenv("CACHE_TTL_SECONDS", "3600")),
+        max_size=int(os.getenv("CACHE_MAX_SIZE", "200")),
+        persist_path=os.getenv("CACHE_PERSIST_PATH", "./data/cache/semantic_cache.json"),
+    )
+
+    security_config = SecurityConfig(
+        max_pdf_size_mb=int(os.getenv("MAX_PDF_SIZE_MB", "50")),
+        validate_magic_bytes=os.getenv("VALIDATE_PDF_MAGIC", "true").lower() in ("true", "1", "yes"),
+        detect_duplicates=os.getenv("DETECT_DUPLICATE_DOCS", "true").lower() in ("true", "1", "yes"),
+        sanitize_filenames=os.getenv("SANITIZE_FILENAMES", "true").lower() in ("true", "1", "yes"),
+        max_query_length=int(os.getenv("MAX_QUERY_LEN", "2000")),
+        detect_prompt_injection=os.getenv("DETECT_PROMPT_INJECTION", "true").lower() in ("true", "1", "yes"),
+    )
+
     # Build configuration
     config = AppConfig(
         llm=LLMConfig(
@@ -236,6 +279,8 @@ def load_config() -> AppConfig:
         hybrid=hybrid_config,
         rerank=rerank_config,
         verification=verification_config,
+        cache=cache_config,
+        security=security_config,
         input_dir=input_dir,
         output_dir=output_dir,
         log_level=os.getenv("LOG_LEVEL", "INFO"),

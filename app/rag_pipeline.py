@@ -194,13 +194,38 @@ class RAGPipeline:
         else:
             self.retrieval_mode = "hybrid" if self.hybrid_retriever is not None else "vector"
 
+        # ── Step 10: Semantic cache (Step 10) ─────────────────────────────────
+        try:
+            from app.cache import SemanticCache
+            from pathlib import Path as _Path
+
+            cache_cfg = getattr(config, "cache", None) if config else None
+            cache_kwargs: dict = {}
+            if cache_cfg:
+                cache_kwargs = {
+                    "enabled": cache_cfg.enabled,
+                    "similarity_threshold": cache_cfg.similarity_threshold,
+                    "ttl_seconds": cache_cfg.ttl_seconds,
+                    "max_size": cache_cfg.max_size,
+                    "persist_path": _Path(cache_cfg.persist_path),
+                }
+            self.semantic_cache: Optional[object] = SemanticCache(**cache_kwargs)
+        except Exception as _e:
+            logger.warning(f"Could not initialize SemanticCache: {_e}")
+            self.semantic_cache = None
+
+        # ── Step 10: Known-document hashes for duplicate detection ─────────────
+        # Set of SHA-256 hex strings of documents that have already been indexed.
+        self._known_doc_hashes: set = set()
+
         logger.info(
             f"Initialized RAGPipeline (retrieval_mode={self.retrieval_mode}, "
             f"reranker={'enabled' if (self.reranker and getattr(self.reranker, 'model', None)) else 'disabled'}, "
             f"verifier={'enabled' if self.verifier is not None else 'disabled'}, "
             f"citations={'enabled' if self.citation_engine is not None else 'disabled'}, "
             f"comparator={'enabled' if self.comparator is not None else 'disabled'}, "
-            f"intelligence={'enabled' if self.research_intelligence is not None else 'disabled'})"
+            f"intelligence={'enabled' if self.research_intelligence is not None else 'disabled'}, "
+            f"semantic_cache={'enabled' if self.semantic_cache is not None and getattr(self.semantic_cache, 'enabled', False) else 'disabled'})"
         )
 
 
@@ -222,6 +247,47 @@ class RAGPipeline:
         """
         pdf_path = Path(pdf_path)
         logger.info(f"Starting PDF ingestion: {pdf_path}")
+
+        # ── Step 10: Security validation ──────────────────────────────────────
+        try:
+            from app.security import (
+                validate_file_size,
+                validate_pdf_magic,
+                compute_file_sha256,
+                check_duplicate,
+            )
+
+            sec_cfg = getattr(self.config, "security", None) if self.config else None
+            max_mb = sec_cfg.max_pdf_size_mb if sec_cfg else 50
+
+            if pdf_path.exists():
+                if sec_cfg is None or sec_cfg.validate_magic_bytes:
+                    validate_pdf_magic(pdf_path)
+
+                validate_file_size(pdf_path, max_mb=max_mb)
+
+                # Duplicate detection — skip if force_recreate
+                if not force_recreate and (sec_cfg is None or sec_cfg.detect_duplicates):
+                    sha256 = compute_file_sha256(pdf_path)
+                    known_hashes = getattr(self, "_known_doc_hashes", set())
+                    if check_duplicate(sha256, known_hashes):
+                        logger.info(
+                            f"Duplicate document detected (SHA-256={sha256[:16]}…), "
+                            "skipping re-ingestion."
+                        )
+                        return {
+                            "success": True,
+                            "duplicate": True,
+                            "sha256": sha256,
+                            "document_id": f"doc_{sha256[:12]}",
+                            "pdf_path": str(pdf_path),
+                            "pages_extracted": 0,
+                            "chunks_created": 0,
+                            "collection_name": self.vector_store.collection_name,
+                            "message": "Document already indexed. Use force_recreate=True to re-index.",
+                        }
+        except (ImportError, AttributeError) as _sec_err:
+            logger.debug(f"Security module not fully available: {_sec_err}")
 
         # Compute deterministic document ID based on content
         try:
@@ -339,6 +405,15 @@ class RAGPipeline:
             "chunks_created": len(all_chunks),
             "collection_name": self.vector_store.collection_name,
         }
+
+        # ── Step 10: Record SHA-256 for future duplicate detection ─────────────
+        try:
+            from app.security import compute_file_sha256
+            _sha = compute_file_sha256(pdf_path)
+            self._known_doc_hashes.add(_sha)
+            result["sha256"] = _sha
+        except Exception:
+            pass
 
         logger.info(f"Successfully ingested PDF: {result}")
         return result
@@ -565,6 +640,17 @@ Answer:"""
         logger.info(f"Executing RAG query: {query}")
         active_mode = (mode or self.retrieval_mode).lower()
 
+        # ── Step 10: Semantic cache lookup ────────────────────────────────────
+        cache = getattr(self, "semantic_cache", None)
+        if cache is not None and verify is not False:
+            try:
+                cached = cache.get(query)
+                if cached is not None:
+                    logger.info("Returning semantic cache hit for query.")
+                    return cached
+            except Exception as _ce:
+                logger.debug(f"Semantic cache lookup error (ignored): {_ce}")
+
         t0_retrieval = time.perf_counter()
         retrieved_chunks = self.retrieve_with_metadata(
             query=query,
@@ -709,6 +795,20 @@ Answer:"""
             + result["citation_latency_ms"]
         )
         result["total_latency_ms"] = round(total_lat, 2)
+
+        # ── Step 10: Store in semantic cache ──────────────────────────────────
+        cache = getattr(self, "semantic_cache", None)
+        if cache is not None:
+            try:
+                # Derive top-level verification_status for cache eligibility check
+                _vs = ""
+                if verification_result is not None:
+                    _vs = verification_result.get("status", "")
+                result_to_cache = dict(result)
+                result_to_cache["verification_status"] = _vs
+                cache.put(query, result_to_cache)
+            except Exception as _ce:
+                logger.debug(f"Semantic cache store error (ignored): {_ce}")
 
         logger.info("RAG query completed successfully")
         return result
@@ -1014,6 +1114,26 @@ Respond with ONLY valid JSON, no other text, in exactly this format:
         status["comparator"] = {"enabled": self.comparator is not None}
         status["intelligence"] = {"enabled": self.research_intelligence is not None}
         status["evaluation_dashboard"] = {"enabled": True}
+
+        # ── Step 10: Cache & security status ─────────────────────────────────
+        if self.semantic_cache is not None:
+            try:
+                status["semantic_cache"] = self.semantic_cache.stats()
+            except Exception:
+                status["semantic_cache"] = {"enabled": getattr(self.semantic_cache, "enabled", False)}
+        else:
+            status["semantic_cache"] = {"enabled": False}
+
+        status["security"] = {
+            "duplicate_detection": "enabled",
+            "known_documents": len(self._known_doc_hashes),
+            "pdf_magic_validation": "enabled",
+            "file_size_limit_mb": (
+                self.config.security.max_pdf_size_mb
+                if (self.config and getattr(self.config, "security", None))
+                else 50
+            ),
+        }
 
         return status
 
